@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: production-run
@@ -87,12 +89,17 @@ jobs:
 
       - name: Ingest
         id: ingest
-        run: >
-          dotnet run --project src/DataAcquisition.Cli -c Release --no-build --
-          ingest
-          --periods ${{ github.event.inputs.periods || '3' }}
-          ${{ github.event.inputs.force == 'true' && '--force' || '' }}
-          2>&1 | tee ingestion.log
+        # pipefail matters: without it the exit status of this step is tee's, not the
+        # CLI's, and a run with a failed source reports success. The first production run
+        # did exactly that - one source failed, 8 of 9 loaded, and the workflow went green.
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet run --project src/DataAcquisition.Cli -c Release --no-build -- \
+            ingest \
+            --periods ${{ github.event.inputs.periods || '3' }} \
+            ${{ github.event.inputs.force == 'true' && '--force' || '' }} \
+            2>&1 | tee ingestion.log
         env:
           SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
 
@@ -111,6 +118,14 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Generate the report
+        run: dotnet run --project src/DataAcquisition.Cli -c Release --no-build -- report --out ./site
+
+      - name: Upload the report for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
       - name: Upload ingestion logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -118,3 +133,20 @@ jobs:
           name: ingestion-log
           path: ingestion.log
           retention-days: 30
+
+  # Deployment is a separate job so the report is only published when ingestion succeeded.
+  # A failed source fails the ingest job, and this job never runs.
+  deploy:
+    name: deploy
+    needs: ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-10-20T07:56:24.690402+00:00",
+  "commit": "c2a791b",
+  "runtime": "Linux Ubuntu 24.04.5 LTS (Noble Numbat) | Intel Xeon Platinum 8370C CPU 2.80GHz | X64",
+  "benchmarks": {
+    "ParserBenchmarks.ParseAndAggregate": {
+      "meanNs": 3050529.8296875,
+      "allocatedBytes": 1049017
+    },
+    "ParserBenchmarks.ParsePrettyPrinted": {
+      "meanNs": 3013271.2216796875,
+      "allocatedBytes": 1049081
+    },
+    "ParserBenchmarks.ParseSingleLine": {
+      "meanNs": 2541360.1787109375,
+      "allocatedBytes": 1061421
+    },
+    "ParserBenchmarks.ParseTreasuryCurve": {
+      "meanNs": 153208.19470214844,
+      "allocatedBytes": 210862
+    },
+    "StorageBenchmarks.CopyLoad[Records=10000]": {
+      "meanNs": 199825683.8,
+      "allocatedBytes": 3393064
+    },
+    "StorageBenchmarks.CumulativeLossQuery[Records=10000]": {
+      "meanNs": 4309524.89765625,
+      "allocatedBytes": 2981
+    },
+    "StorageBenchmarks.PoolPeriodQuery[Records=10000]": {
+      "meanNs": 20299639.4375,
+      "allocatedBytes": 4305
+    },
+    "StorageBenchmarks.SpreadQuery[Records=10000]": {
+      "meanNs": 10256529.2640625,
+      "allocatedBytes": 3123
+    }
+  }
+}

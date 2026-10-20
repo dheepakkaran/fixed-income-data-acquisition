@@ -23,8 +23,15 @@ public sealed record AbsEeFiling(string AccessionNumber, DateOnly ReportingPerio
 public sealed class EdgarClient(
     HttpClient httpClient,
     IRawFileCache cache,
-    ILogger<EdgarClient> logger)
+    ILogger<EdgarClient> logger,
+    TimeSpan? retryBaseDelay = null)
 {
+    /// <summary>
+    /// Base of the exponential backoff between download attempts. Injectable only so tests
+    /// of the retry path do not spend six seconds asleep proving a loop runs three times.
+    /// </summary>
+    private readonly TimeSpan _retryBaseDelay = retryBaseDelay ?? TimeSpan.FromSeconds(2);
+
     private static readonly JsonDocumentOptions JsonOptions = new() { AllowTrailingCommas = true };
 
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
@@ -173,26 +180,84 @@ public sealed class EdgarClient(
             return new FetchedSource(source, cachedPath, hash, size, FromCache: true);
         }
 
-        _logger.LogInformation("Downloading {Uri}", source.Uri);
+        // Retried here rather than left to the resilience handler. These exhibits are
+        // fetched with ResponseHeadersRead and streamed straight to disk, so a transfer
+        // that dies mid-body has already had its headers accepted and part of its stream
+        // consumed; Polly cannot replay that, and the standard handler duly passed the
+        // first production run's truncation straight through as a failed source. A fresh
+        // GET is the only way to recover, so the whole download is the unit of retry.
+        const int maxAttempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Downloading {Uri}{Attempt}",
+                    source.Uri,
+                    attempt == 1 ? string.Empty : $" (attempt {attempt} of {maxAttempts})");
 
-        using var response = await _httpClient
-            .GetAsync(source.Uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+                using var response = await _httpClient
+                    .GetAsync(source.Uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                    .ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
 
-        await using var content = await response.Content
-            .ReadAsStreamAsync(cancellationToken)
-            .ConfigureAwait(false);
+                var declaredLength = response.Content.Headers.ContentLength;
 
-        var (path, sha256) = await _cache
-            .WriteAsync(cacheKey, content, cancellationToken)
-            .ConfigureAwait(false);
+                await using var content = await response.Content
+                    .ReadAsStreamAsync(cancellationToken)
+                    .ConfigureAwait(false);
 
-        var bytes = new FileInfo(path).Length;
-        _logger.LogInformation("Cached {Source} as {Bytes:N0} bytes (sha256 {Hash})", source, bytes, sha256[..12]);
+                var (path, sha256) = await _cache
+                    .WriteAsync(cacheKey, content, cancellationToken)
+                    .ConfigureAwait(false);
 
-        return new FetchedSource(source, path, sha256, bytes, FromCache: false);
+                var bytes = new FileInfo(path).Length;
+
+                // A transfer can end cleanly and still be short. Compare against the
+                // declared length when the server gave one, so a silent truncation is
+                // caught here instead of surfacing later as a half-parsed exhibit.
+                if (declaredLength is { } expected && bytes != expected)
+                {
+                    throw new HttpIOException(
+                        HttpRequestError.ResponseEnded,
+                        $"Downloaded {bytes:N0} bytes but Content-Length declared {expected:N0}.");
+                }
+
+                _logger.LogInformation(
+                    "Cached {Source} as {Bytes:N0} bytes (sha256 {Hash})", source, bytes, sha256[..12]);
+
+                return new FetchedSource(source, path, sha256, bytes, FromCache: false);
+            }
+            catch (Exception ex) when (attempt < maxAttempts && IsRetryableTransfer(ex))
+            {
+                var delay = _retryBaseDelay * Math.Pow(2, attempt - 1);
+                _logger.LogWarning(
+                    ex,
+                    "Transfer of {Uri} failed on attempt {Attempt}; retrying in {Delay}",
+                    source.Uri,
+                    attempt,
+                    delay);
+
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
+
+    /// <summary>
+    /// Whether a failure is worth another GET: a dropped or truncated transfer, rather than
+    /// a 404 or a malformed request that will fail identically next time.
+    /// </summary>
+    private static bool IsRetryableTransfer(Exception exception) => exception switch
+    {
+        HttpIOException => true,
+        IOException => true,
+        HttpRequestException { StatusCode: null } => true,
+        HttpRequestException { StatusCode: >= System.Net.HttpStatusCode.InternalServerError } => true,
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.RequestTimeout } => true,
+        TaskCanceledException { InnerException: TimeoutException } => true,
+        _ => false,
+    };
+
 
     private static bool TryParseIsoDate(string? value, out DateOnly date) =>
         DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);

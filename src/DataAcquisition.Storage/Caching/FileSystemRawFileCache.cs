@@ -43,22 +43,32 @@ public sealed class FileSystemRawFileCache(string directory) : IRawFileCache
 
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
-        await using (var destination = new FileStream(
-            partial, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
+        try
         {
-            var buffer = new byte[BufferSize];
-            int read;
-            while ((read = await content
-                .ReadAsync(buffer.AsMemory(), cancellationToken)
-                .ConfigureAwait(false)) > 0)
+            await using (var destination = new FileStream(
+                partial, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
             {
-                hash.AppendData(buffer, 0, read);
-                await destination
-                    .WriteAsync(buffer.AsMemory(0, read), cancellationToken)
-                    .ConfigureAwait(false);
-            }
+                var buffer = new byte[BufferSize];
+                int read;
+                while ((read = await content
+                    .ReadAsync(buffer.AsMemory(), cancellationToken)
+                    .ConfigureAwait(false)) > 0)
+                {
+                    hash.AppendData(buffer, 0, read);
+                    await destination
+                        .WriteAsync(buffer.AsMemory(0, read), cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
-            await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // A truncated transfer must not leave a .part file behind for the next attempt
+            // to trip over. The final path is never written, so the cache stays consistent.
+            TryDelete(partial);
+            throw;
         }
 
         File.Move(partial, path, overwrite: true);
@@ -74,6 +84,21 @@ public sealed class FileSystemRawFileCache(string directory) : IRawFileCache
 
         var digest = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToHexStringLower(digest);
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // Best effort: a leftover .part is harmless, it is never read.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>Keep a provider-supplied key from escaping its own directory.</summary>

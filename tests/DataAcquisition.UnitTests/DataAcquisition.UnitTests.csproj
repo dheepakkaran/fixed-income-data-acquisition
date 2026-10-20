@@ -24,12 +24,18 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DataAcquisition.Core\DataAcquisition.Core.csproj" />
     <ProjectReference Include="..\..\src\DataAcquisition.Providers.SecAbsEe\DataAcquisition.Providers.SecAbsEe.csproj" />
+    <ProjectReference Include="..\..\src\DataAcquisition.Providers.TreasuryYields\DataAcquisition.Providers.TreasuryYields.csproj" />
+    <ProjectReference Include="..\..\src\DataAcquisition.Reports\DataAcquisition.Reports.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)../fixtures/**/*" LinkBase="fixtures">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../../tools/PerfGate/PerfGate.csproj" />
   </ItemGroup>
 
 </Project>

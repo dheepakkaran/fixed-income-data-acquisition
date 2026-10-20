@@ -75,13 +75,28 @@ the extra complexity of the staging table has stopped paying for itself and the 
 
 | Suite | Tests | Duration |
 |---|---:|---:|
-| `DataAcquisition.UnitTests` | 60 | 5 s |
-| `DataAcquisition.IntegrationTests` (Testcontainers, real PostgreSQL 16) | 23 | 7 s |
-| **Total** | **83** | |
+| `DataAcquisition.UnitTests` | 120 | 5 s |
+| `DataAcquisition.IntegrationTests` (Testcontainers, real PostgreSQL 16) | 48 | 8 s |
+| **Total** | **168** | |
 
-**Line coverage: 70.7%** (862 of 1,220 coverable lines), as the union of both suites.
+**Line coverage: 61.1%** (2,686 of 4,394 coverable lines), as the union of both suites.
 Counted as a union rather than by adding the two coverlet reports together: both measure the
-same 1,220 lines, so summing them double-counts and reports a misleading 49.9%.
+same lines, so summing them reports a different and misleading figure.
+
+| Assembly | Covered | |
+|---|---:|---:|
+| `DataAcquisition.Reports` | 1,027 / 1,164 | 88.2% |
+| `DataAcquisition.Core` | 454 / 590 | 76.9% |
+| `PerfGate` | 119 / 228 | 52.2% |
+| `DataAcquisition.Providers.TreasuryYields` | 231 / 476 | 48.5% |
+| `DataAcquisition.Providers.SecAbsEe` | 543 / 1,168 | 46.5% |
+| `DataAcquisition.Storage` | 312 / 768 | 40.6% |
+
+The spread is uneven on purpose. What is left uncovered in the provider and storage
+assemblies is mostly the EDGAR and Treasury HTTP paths, which would need live network calls,
+and DI registration. `Reports` was at 39.3% until `ReportGeneratorTests` was added: the metric
+SQL had been tested directly against the views, which left the code that *reads* them
+untested — a gap a view test cannot close.
 
 ## 5. Data quality found in the real filings
 
@@ -101,7 +116,68 @@ report or a crash if taken on trust from the schema alone.
 | `www.sec.gov/Archives` ignores HTTP `Range` | sent `Range: bytes=0-120000`, received HTTP 200 and all 122 MB | Partial fetch is not available; idempotency cannot lean on conditional requests |
 | 0% APR loans are real | 8 of the first 200 GM Financial loans, flagged `subvented` | A "rate must be positive" rule would reject valid data |
 
-## 6. Rate limiting
+## 6. The performance gate, shown failing and then passing
+
+Benchmarks run as a BenchmarkDotNet `ShortRun` (2 warmups, 5 iterations) with
+`MemoryDiagnoser`. The gate compares mean time and allocated memory per benchmark against
+`benchmarks/baseline.json` and fails past 15%.
+
+### Baseline (Apple M5, local)
+
+| Benchmark | Mean | Allocated |
+|---|---:|---:|
+| `ParserBenchmarks.ParsePrettyPrinted` | 1.360 ms | 2,024,232 B |
+| `ParserBenchmarks.ParseSingleLine` | 1.203 ms | 2,038,754 B |
+| `ParserBenchmarks.ParseAndAggregate` | 1.425 ms | 2,024,249 B |
+| `ParserBenchmarks.ParseTreasuryCurve` | 0.068 ms | 210,004 B |
+| `StorageBenchmarks.CopyLoad[Records=10000]` | 84.786 ms | 3,392,560 B |
+| `StorageBenchmarks.PoolPeriodQuery[Records=10000]` | 7.225 ms | 4,344 B |
+| `StorageBenchmarks.SpreadQuery[Records=10000]` | 4.090 ms | 3,168 B |
+| `StorageBenchmarks.CumulativeLossQuery[Records=10000]` | 2.507 ms | 3,070 B |
+
+### The regression the gate caught
+
+A `Regex` constructed per call inside `ParseDecimal`, arriving disguised as extra validation.
+All 16 parser correctness tests still passed, and `build-test` was green: this is precisely
+the class of defect tests cannot see.
+
+| Benchmark | Baseline | With the regression | Change |
+|---|---:|---:|---:|
+| `ParsePrettyPrinted` | 1.36 ms | **4.12 ms** | **+203.0% time, +205.8% memory** |
+| `ParseSingleLine` | 1.20 ms | 3.57 ms | +197.3% time, +167.2% memory |
+| `ParseAndAggregate` | 1.42 ms | 2.78 ms | +95.0% time, +205.8% memory |
+
+**CI run with the regression: [failure](https://github.com/dheepakkaran/fixed-income-data-acquisition/actions/runs/39387182737)**
+— `build-test: success`, `perf-gate: failure`, "Performance gate failed: 8 benchmark(s)
+regressed by more than 15%."
+
+### After the revert
+
+| Benchmark | Mean | vs baseline | Allocated | vs baseline |
+|---|---:|---:|---:|---:|
+| `ParsePrettyPrinted` | 1.36 ms | −0.2% | 1.00 MB | **−48.2%** |
+| `ParseSingleLine` | 1.11 ms | −7.8% | 1.01 MB | −47.9% |
+| `ParseAndAggregate` | 1.36 ms | −4.7% | 1.00 MB | −48.2% |
+| `ParseTreasuryCurve` | 61.76 us | −9.1% | 205.1 KB | +0.0% |
+
+The allocation is down by half because of a separate finding. The first attempt at a
+"deliberately slow" change shrank the parser's `FileStream` buffer from 1 MiB to 64 bytes —
+and **it was not slow**: +3.6% time, −51% allocation. `XmlReader` buffers on top of the
+stream, so the 1 MiB buffer was simply half of the parser's 2 MB allocation per parse, bought
+for about 3% of throughput. It is now 64 KiB, which is the real change kept out of that
+attempt.
+
+### What the CI numbers also showed
+
+In CI the regression read **+499%**, and *every* benchmark tripped — including
+`ParseTreasuryCurve` at **+211.7%**, which the same change measured at **−5.1%** locally. The
+baseline was captured on an Apple M5 and compared against an `ubuntu-latest` runner, so the
+comparison was measuring the hardware. The gate was right to fail; the comparison was not
+meaningful. Hence `capture-baseline.yml`, which captures the baseline on a CI runner from
+`main` (decision D18), and why the local pair above is reported alongside the CI result: both
+show the gate working, only the local pair measures the regression's actual size.
+
+## 7. Rate limiting
 
 SEC fair access permits at most 10 requests per second.
 

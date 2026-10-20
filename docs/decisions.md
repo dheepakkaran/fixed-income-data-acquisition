@@ -138,3 +138,262 @@ load committed nothing, validation had nothing to object to, and the run went gr
 ABS-EE exhibit with no assets in it means the file, the format or the parser is wrong, and
 reporting that behind a green tick is worse than failing, because the production run would
 have published an empty report without complaint.
+
+---
+
+## D10 — Large downloads are retried in the provider, not by the resilience handler
+
+**Decision.** `EdgarClient.FetchExhibitAsync` retries a failed transfer itself, three
+attempts with exponential backoff, and verifies the delivered length against
+`Content-Length`.
+
+**Why.** `AddStandardResilienceHandler` cannot help here, which the first production run
+demonstrated: one of nine sources died with
+`HttpIOException: The response ended prematurely` partway through a 120 MB body and the
+handler passed it straight through as a failed source. Exhibits are fetched with
+`HttpCompletionOption.ResponseHeadersRead` and streamed to disk, so by the time a transfer
+dies its headers have been accepted and part of its stream consumed. Polly cannot replay
+that. A fresh GET is the only recovery, so the whole download has to be the unit of retry.
+
+The length check is there because a transfer can end cleanly and still be short. Without it
+a silent truncation would be cached, hashed and treated as the real exhibit, surfacing much
+later as a half-parsed file.
+
+**Rejected.** Raising the resilience handler's retry count. It would retry the request, not
+the transfer, and the failure mode it needs to cover happens after the retry decision has
+already been made.
+
+---
+
+## D11 — The production run's ingest step sets `pipefail`
+
+**Decision.** The ingest step is an explicit `bash` block beginning `set -o pipefail`.
+
+**Why.** The step pipes the CLI through `tee` to capture a log, and a bash pipeline's exit
+status is its last command's. Without `pipefail` the step's status was `tee`'s, which is
+always zero. The first production run reported "8 succeeded, 0 skipped, 1 failed" and the
+workflow went green. "Fail loudly on a validation failure" is a requirement, and a green
+tick over a failed source is the precise opposite.
+
+---
+
+## D12 — The rate limiter's wall-clock test asserts average rate, not arrival distribution
+
+**Decision.** `The_average_request_rate_never_exceeds_the_ceiling` divides requests by
+elapsed time. The earlier version slid a one-second window across recorded arrival
+timestamps.
+
+**Why.** The stricter-looking assertion was the flakier one. Arrival timestamps are taken in
+a continuation, so when a shared runner deschedules the thread pool the arrivals bunch
+together even though the limiter paced the permits correctly: it observed 11 on a macOS
+runner in the release workflow while passing locally and on every Linux run. It was
+measuring the thread pool.
+
+Average rate can only be pushed down by scheduler noise, never up, so it fails only when the
+limiter is genuinely wrong. The no-burst guarantee it used to imply is now asserted
+directly and deterministically by `The_bucket_holds_a_single_token_so_there_is_no_burst_allowance`,
+with no clock involved at all.
+
+---
+
+## D13 — The Treasury provider does not answer the skip check from its cache
+
+**Decision.** `TreasuryYieldsProvider` deliberately leaves `TryGetCachedHashAsync` alone,
+unlike the SEC provider which overrides it.
+
+**Why.** The two feeds differ in a way that matters for idempotency. An ABS-EE exhibit is
+immutable once filed, so a cached copy's hash is a complete answer and a repeat run makes no
+request at all. The Treasury feed is published one calendar year per request and gains a row
+every business day, so a cached copy of the current year says nothing about whether the
+upstream has changed. Answering from the cache there would freeze the current year at
+whatever day it was first fetched.
+
+The content hash still does its job after the fetch: a finished year hashes identically and
+is skipped, and the current year's hash changes with each new business day so the additions
+are picked up. The cost is one request per year per run, which for a feed with a 19-second
+response is the right trade.
+
+---
+
+## D14 — Treasury's HTTP timeouts are set from a measurement, not from the default
+
+**Decision.** The Treasury client's resilience handler uses a 90-second attempt timeout and
+a 5-minute total, rather than `AddStandardResilienceHandler`'s defaults.
+
+**Why.** The endpoint generates a whole calendar year of the curve per request and is slow
+by nature: time-to-first-byte measured **19.5 seconds** for 2026 (310 KB), with and without
+an explicit `Accept` header. The standard handler's 10-second attempt timeout cut every
+attempt off, and the first run failed both sources with a timeout that had nothing to do
+with the data. The numbers here are that measurement plus headroom, not a guess.
+
+---
+
+## D15 — Charge-offs are summed across periods, including the negatives
+
+**Decision.** `net_loss` for a period is `SUM(chargedoffPrincipalAmount) - SUM(recoveredAmount)`,
+and `cumulative_net_loss` is the running total of that. Negative charge-off amounts are summed
+as-is, not filtered out.
+
+**Why.** The schema cannot settle whether these fields are period flows or running totals: the
+Item 3(f) fields all say "during the reporting period" while Item 3(i)(1) says only "the amount
+of uncollected principal charged-off". The data settles it. One AmeriCredit loan reads
++18,975.81 at 2026-06-30, **−18,975.81** at 2026-07-31 with its balance restored and the
+zero-balance code gone, then +18,975.81 again at 2026-08-31: charged off, reversed by the
+servicer, charged off again. Summing the three periods gives +18,975.81, the correct net.
+Per-period totals are also non-monotonic across periods, which a running total could not be.
+
+Dropping the negatives would overstate losses by counting the reversed charge-off twice.
+
+**Not claimed.** This is cumulative over the periods ingested, not since pool inception. The
+monthly filings never state the pool's balance at issuance, and loans removed from a filing
+take their history with them. The report says so on the page rather than implying a
+since-inception figure.
+
+---
+
+## D16 — The Pages deployment is a separate job gated on ingestion
+
+**Decision.** `production-run.yml` generates the report in the `ingest` job and deploys it
+from a `deploy` job with `needs: ingest`.
+
+**Why.** A failed source fails the ingest job, and a dependent job does not run. Generating
+and deploying in one job would mean a partial ingest could still publish, and a report that
+quietly covers eight of nine sources is worse than no new report: the page would look current
+and be wrong. Separating them makes "nothing publishes unless every source loaded" a property
+of the graph rather than of step ordering.
+
+---
+
+## D17 — The perf gate is enforcing on release PRs and report-only into `develop`
+
+**Decision.** `perf-gate` fails the build on a pull request into `main` and reports without
+failing on a pull request into `develop`. Threshold 15% on either mean time or allocated
+memory.
+
+**Why.** The gate's job is to stop a performance regression reaching production, and the only
+pull request that reaches production is the release pull request into `main`. Blocking every
+feature branch as well would buy very little and cost a lot, because of how the measurement
+actually behaves.
+
+The benchmarks run as a BenchmarkDotNet `ShortRun` (2 warmups, 5 iterations) on a shared
+GitHub runner. That is a deliberate trade: a full run would take tens of minutes on every
+release for precision the 15% threshold never uses. The price is variance, and a noisy gate
+that blocks merges is one people learn to re-run until it passes — at which point it is worse
+than no gate, because it looks like protection. Report-only on feature branches keeps the
+number in front of whoever wrote the change, where it is useful, without teaching anyone to
+ignore a red tick.
+
+The same reasoning sets the threshold. 15% is well outside the run-to-run spread of a short
+job on a shared runner but far inside anything that matters: the COPY path is 8.9x faster than
+row-by-row INSERT, and a change that gave that advantage back would show as hundreds of
+percent, not seventeen.
+
+**Also:** a missing `benchmarks/baseline.json` is not a regression. The gate reports that
+there is nothing to compare against and exits 0, because failing a pull request over an absent
+file rather than a slow change would be a false alarm on the very first run.
+
+**Rejected.** Enforcing everywhere with a wider threshold. A threshold loose enough to absorb
+runner noise on every branch would be loose enough to let a real regression through on the one
+branch that matters.
+
+---
+
+## D18 — The baseline is captured on a CI runner, not a developer machine
+
+**Decision.** `benchmarks/baseline.json` is produced by the `capture-baseline` workflow
+running on `ubuntu-latest` from `main`, and refreshed that way after each release. It is
+uploaded as an artifact and committed through a `chore/` branch rather than pushed by the
+workflow, because `main` is protected and a workflow pushing to it would bypass the review
+the protection exists for.
+
+**Why.** Found by getting it wrong. The first baseline was captured locally on an Apple M5
+and compared against an `ubuntu-latest` runner. The gate then reported **all eight**
+benchmarks as regressed, including `ParseTreasuryCurve` at **+211.7%** — a benchmark the
+change under test barely touched, which measured −5.1% against the same baseline locally.
+
+The gate was not wrong; the comparison was meaningless. A baseline and a run from different
+machines measure the hardware, and the difference swamps anything the threshold is there to
+catch. It also fails in the dangerous direction: the noise is positive, so everything looks
+like a regression, and a gate that cries wolf on every release is one that gets bypassed.
+
+**Consequence for reading the demonstration in RESULTS.md.** The deliberate regression's CI
+numbers (+499% on the pretty-printed parser) are inflated by this, which is why the local
+measurement against a local baseline (+203%) is reported alongside them. Both show the gate
+catching the regression; only the local pair is a clean measurement of its size.
+
+**The gate now detects this itself**, rather than relying on anyone reading this note. Each
+baseline records the machine its measurements came from, taken from BenchmarkDotNet's
+`HostEnvironmentInfo` in the report rather than from the environment of whatever process ran
+`capture` — the first CI baseline was captured on a laptop from downloaded artifacts and duly
+recorded the laptop. When the baseline's host differs from the current run's, `compare` prints
+a GitHub warning annotation and puts a block at the top of the markdown naming both machines.
+
+It warns rather than fails: the percentages are *meaningless*, not bad, and failing there would
+block a release on a stale baseline instead of on a slow change.
+
+For the record, the two machines differ by a factor of 2.2 to 2.8:
+
+| Benchmark | Apple M5 | ubuntu-latest (Xeon 8370C) |
+|---|---:|---:|
+| `ParsePrettyPrinted` | 1.360 ms | 3.013 ms |
+| `CopyLoad[Records=10000]` | 84.786 ms | 199.826 ms |
+| `PoolPeriodQuery[Records=10000]` | 7.225 ms | 20.300 ms |
+
+---
+
+## D19 — A failed PR comment does not fail the perf gate
+
+**Decision.** The `perf-gate` job declares `pull-requests: write`, and the comment step
+carries `continue-on-error: true`.
+
+**Why.** Both halves were learned from one red build. The job had no `permissions` block, so
+it ran with the default restricted token and the comment step failed with
+`GraphQL: Resource not accessible by integration (addComment)` — *after* the gate itself had
+already passed. The job went red for a posting problem, which is the gate reporting something
+it does not measure.
+
+The permission fixes the cause. `continue-on-error` covers the rest: GitHub can refuse a
+comment for reasons that have nothing to do with performance — a fork's token, a disabled
+feature, an API outage — and the verdict is already carried by the step's exit code and the
+job summary. A gate that goes red for reasons unrelated to performance is a gate that gets
+ignored, which is the same failure mode D17 is written to avoid.
+
+---
+
+## D20 — Time and memory get different thresholds, because they are different measurements
+
+**Decision.** `perf-gate` enforces **15% on allocated memory** and **50% on mean time**.
+
+**Why.** The `v1.0.0` release pull request failed the gate, and the gate's own host check said
+why:
+
+```
+baseline: Linux Ubuntu 24.04.5 LTS | Intel Xeon Platinum 8370C CPU 2.80GHz | X64
+this run: Linux Ubuntu 24.04.5 LTS | AMD EPYC 7763                        | X64
+```
+
+GitHub's `ubuntu-latest` pool mixes CPU models. The same commit, measured on the two,
+differed by **+18.8% to +33.1%** across the parser benchmarks — while **allocation was
+identical to within 0.0%**. That last part is the proof: the work done did not change, only
+the silicon it ran on. D18 fixed comparing a laptop with a runner; this is the same problem
+one level down, and "same runner class" turns out not to be a narrow enough guarantee.
+
+So the two measures are treated as what they are:
+
+- **Allocated bytes are deterministic.** The same code allocates the same bytes on any
+  machine, so 15% there is a real signal about the code.
+- **Mean time is not.** On a shared runner of unknown CPU it carries at least 33% of
+  hardware variance before the change under test contributes anything.
+
+A 50% time threshold is still a working control, not a formality. The deliberate regression in
+RESULTS.md measured **+203%** in time and **+206%** in memory: either threshold alone catches
+it. `The_deliberate_regression_trips_both_measures` pins that, so the wider time tolerance
+cannot quietly become a tolerance for everything.
+
+**Rejected.** Raising both thresholds to 50%. Allocation does not need the slack, and giving
+it up would lose the one measure that is actually comparable across machines — exactly the
+measure that caught the regex regression's extra 2 MB per parse.
+
+**Rejected.** Pinning the runner to a fixed CPU with a larger instance type. It would work and
+it costs money; a public repository gets the shared pool. Treating the measurement honestly is
+free.
