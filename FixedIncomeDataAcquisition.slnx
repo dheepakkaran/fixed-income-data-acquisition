@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/DataAcquisition.Benchmarks/DataAcquisition.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/DataAcquisition.Cli/DataAcquisition.Cli.csproj" />
+    <Project Path="src/DataAcquisition.Core/DataAcquisition.Core.csproj" />
+    <Project Path="src/DataAcquisition.Providers.SecAbsEe/DataAcquisition.Providers.SecAbsEe.csproj" />
+    <Project Path="src/DataAcquisition.Providers.TreasuryYields/DataAcquisition.Providers.TreasuryYields.csproj" />
+    <Project Path="src/DataAcquisition.Reports/DataAcquisition.Reports.csproj" />
+    <Project Path="src/DataAcquisition.Storage/DataAcquisition.Storage.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DataAcquisition.IntegrationTests/DataAcquisition.IntegrationTests.csproj" />
+    <Project Path="tests/DataAcquisition.UnitTests/DataAcquisition.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/PerfGate/PerfGate.csproj" />
+  </Folder>
+</Solution>

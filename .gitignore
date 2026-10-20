@@ -1,0 +1,17 @@
+bin/
+obj/
+*.user
+.vs/
+.vscode/
+.idea/
+artifacts/
+TestResults/
+coverage/
+*.trx
+*.coverage
+BenchmarkDotNet.Artifacts/
+site/
+.cache/
+sec-cache/
+.DS_Store
+*.received.*
