@@ -193,3 +193,35 @@ Average rate can only be pushed down by scheduler noise, never up, so it fails o
 limiter is genuinely wrong. The no-burst guarantee it used to imply is now asserted
 directly and deterministically by `The_bucket_holds_a_single_token_so_there_is_no_burst_allowance`,
 with no clock involved at all.
+
+---
+
+## D13 — The Treasury provider does not answer the skip check from its cache
+
+**Decision.** `TreasuryYieldsProvider` deliberately leaves `TryGetCachedHashAsync` alone,
+unlike the SEC provider which overrides it.
+
+**Why.** The two feeds differ in a way that matters for idempotency. An ABS-EE exhibit is
+immutable once filed, so a cached copy's hash is a complete answer and a repeat run makes no
+request at all. The Treasury feed is published one calendar year per request and gains a row
+every business day, so a cached copy of the current year says nothing about whether the
+upstream has changed. Answering from the cache there would freeze the current year at
+whatever day it was first fetched.
+
+The content hash still does its job after the fetch: a finished year hashes identically and
+is skipped, and the current year's hash changes with each new business day so the additions
+are picked up. The cost is one request per year per run, which for a feed with a 19-second
+response is the right trade.
+
+---
+
+## D14 — Treasury's HTTP timeouts are set from a measurement, not from the default
+
+**Decision.** The Treasury client's resilience handler uses a 90-second attempt timeout and
+a 5-minute total, rather than `AddStandardResilienceHandler`'s defaults.
+
+**Why.** The endpoint generates a whole calendar year of the curve per request and is slow
+by nature: time-to-first-byte measured **19.5 seconds** for 2026 (310 KB), with and without
+an explicit `Accept` header. The standard handler's 10-second attempt timeout cut every
+attempt off, and the first run failed both sources with a timeout that had nothing to do
+with the data. The numbers here are that measurement plus headroom, not a guess.

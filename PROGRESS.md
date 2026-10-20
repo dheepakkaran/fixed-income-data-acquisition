@@ -21,8 +21,18 @@
   manual dispatch, main only, Postgres service, migrations, ingest, logs as an artifact,
   SEC downloads cached by month). The Pages deployment step is added with the report.
 
+- **`fix/production-run-reliability`** (PR #6, merged) — `pipefail` on the ingest step (the
+  first production run reported success with a failed source), application-level download
+  retry with a `Content-Length` check, and a rate-limiter test that no longer measures the
+  thread pool.
+- **`v0.1.0` released** — tag, GitHub Release, self-contained CLI for linux-x64 and
+  osx-arm64, production run executed from `main`.
+- **`feature/provider-treasury-yields`** — second provider, second asset class. 6,255 par
+  yield points over 2 calendar years. `git diff develop --stat -- src/DataAcquisition.Core`
+  prints nothing.
+
 ## Next
-- Release `v0.1.0`, then `feature/provider-treasury-yields`
+- `feature/abs-pool-report`
 
 ## Open issues
 - `perf-gate` is not yet a required status check on `main`; it is added in

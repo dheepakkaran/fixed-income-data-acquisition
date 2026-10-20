@@ -1,6 +1,7 @@
 using DataAcquisition.Cli.Commands;
 using DataAcquisition.Core;
 using DataAcquisition.Providers.SecAbsEe;
+using DataAcquisition.Providers.TreasuryYields;
 using DataAcquisition.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,7 @@ builder.Logging
 builder.Services.AddDataAcquisitionCore();
 builder.Services.AddDataAcquisitionStorage(builder.Configuration);
 builder.Services.AddSecAbsEeProvider(builder.Configuration);
+builder.Services.AddTreasuryYieldsProvider(builder.Configuration);
 
 using var host = builder.Build();
 
