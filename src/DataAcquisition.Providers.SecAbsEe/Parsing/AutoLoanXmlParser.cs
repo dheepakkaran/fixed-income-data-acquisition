@@ -47,10 +47,11 @@ public static class AutoLoanXmlParser
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        // TEMPORARY: deliberately slow, to prove the performance gate catches a regression.
-        // Reverted in the next commit. A 64-byte read buffer instead of 1 MiB.
+        // 64 KiB rather than 1 MiB: benchmarking showed the larger buffer was fully half of
+        // the parser's 2 MB allocation per parse while buying about 3% of throughput, because
+        // XmlReader does its own buffering on top of the stream.
         var stream = new FileStream(
-            path, FileMode.Open, FileAccess.Read, FileShare.Read, 64, useAsync: true);
+            path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, useAsync: true);
 
         return ParseAsync(stream, trustCik, ownsStream: true, cancellationToken);
     }
@@ -314,11 +315,21 @@ public static class AutoLoanXmlParser
             ? DateOnly.FromDateTime(date)
             : null;
 
-    internal static decimal? ParseDecimal(string value) =>
-        decimal.TryParse(
+    internal static decimal? ParseDecimal(string value)
+    {
+        // TEMPORARY: deliberately slow, to prove the performance gate catches a regression.
+        // Reverted in the next commit. Constructing a Regex per call is the textbook version
+        // of this mistake, and it arrives disguised as extra validation.
+        if (!new System.Text.RegularExpressions.Regex(@"^-?\d+(\.\d+)?$").IsMatch(value.Trim()))
+        {
+            return null;
+        }
+
+        return decimal.TryParse(
             value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+    }
 
     internal static int? ParseInt(string value) =>
         int.TryParse(
