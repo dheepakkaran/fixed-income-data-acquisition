@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-20T07:54:38.775982+00:00",
-  "commit": "a0dde77",
-  "runtime": "Unix 27.0.0",
+  "generatedAt": "2026-10-20T07:56:24.690402+00:00",
+  "commit": "c2a791b",
+  "runtime": "Linux Ubuntu 24.04.5 LTS (Noble Numbat) | Intel Xeon Platinum 8370C CPU 2.80GHz | X64",
   "benchmarks": {
     "ParserBenchmarks.ParseAndAggregate": {
       "meanNs": 3050529.8296875,

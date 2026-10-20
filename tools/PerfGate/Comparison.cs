@@ -43,6 +43,19 @@ public sealed record GateResult(
     IReadOnlyList<BenchmarkComparison> Comparisons,
     IReadOnlyList<string> MissingFromResults)
 {
+    /// <summary>Machine the baseline was measured on, when it recorded one.</summary>
+    public string? BaselineHost { get; init; }
+
+    /// <summary>Machine this run was measured on.</summary>
+    public string? CurrentHost { get; init; }
+
+    /// <summary>
+    /// True when the two runs came from different machines, which makes every percentage
+    /// below a measurement of the hardware rather than of the change.
+    /// </summary>
+    public bool HostMismatch =>
+        BaselineHost is { Length: > 0 } a && CurrentHost is { Length: > 0 } b
+        && !string.Equals(a, b, StringComparison.Ordinal);
     public IReadOnlyList<BenchmarkComparison> Regressions =>
         [.. Comparisons.Where(c => c.RegressedOn(Threshold))];
 
@@ -90,6 +103,15 @@ public sealed record GateResult(
         var mode = enforcing ? "enforcing" : "report-only";
         md.Append(CultureInfo.InvariantCulture,
             $"## Performance gate {verdict} ({mode}, threshold {Threshold:N0}%)\n\n");
+
+        if (HostMismatch)
+        {
+            md.Append(
+                "> **The baseline and this run came from different machines, so the percentages "
+                + "below are not meaningful.** Refresh the baseline from a run on this runner "
+                + "before reading them as a verdict (see `docs/runbook.md`).\n>\n"
+                + $"> - baseline: `{BaselineHost}`\n> - this run: `{CurrentHost}`\n\n");
+        }
 
         if (!Passed && !enforcing)
         {
