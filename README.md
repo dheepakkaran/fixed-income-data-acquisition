@@ -96,7 +96,7 @@ Every row earned its place; where a claim is measurable the measurement is in
 | **`Microsoft.Extensions.Http.Resilience`** + **`System.Threading.RateLimiting`** | Retries flaky calls, and holds SEC's fair-access ceiling of 10 requests per second. | Ceiling holds; a sliding window did **not** (19 observed in one second) |
 | **`System.Xml.XmlReader`** (streaming) | Exhibits reach 160 MB, and one filer emits a single 144 MB line with no newline anywhere. | **1.2 MB** managed heap growth parsing a 116.5 MiB file; 37,263 records/s, 148.9 MB/s |
 | **`Microsoft.Extensions.Hosting`** / DI / Logging / Configuration | A provider is a class plus a config entry. | Treasury added with **0 lines changed in Core** |
-| **xUnit** + coverlet | Automated tests and coverage in CI. | **168 tests**, 61.1% line coverage |
+| **xUnit** + coverlet | Automated tests and coverage in CI. | **175 tests**, 61.1% line coverage |
 | **Testcontainers.PostgreSql** | COPY, upserts, partial indexes, check constraints and rollback cannot be trusted against an in-memory fake. | 48 integration tests on real PostgreSQL |
 | **BenchmarkDotNet** | Measures the parser, the bulk load and the metric queries, and feeds the gate. | 8 benchmarks |
 | **GitHub Actions** | CI on every PR, the perf gate, releases and the monthly production run. | — |
@@ -161,7 +161,7 @@ docs/                                     architecture · metrics · adding-a-pr
 | [docs/decisions.md](docs/decisions.md) | 19 decisions, each with the alternative rejected |
 | [RESULTS.md](RESULTS.md) | Measured numbers only |
 
-Coverage is 61.1% of 4,394 coverable lines, merged across both suites rather than summed —
+Coverage is 61.1% of 4,455 coverable lines, merged across both suites rather than summed —
 both reports measure the same lines, so adding them reports a misleadingly different number.
 It is uneven by design: `DataAcquisition.Reports` is 88.2% and `Core` 76.9%, while the
 provider assemblies sit near 47% because much of what is left is the EDGAR and Treasury HTTP
