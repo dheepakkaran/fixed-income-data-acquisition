@@ -119,7 +119,9 @@ jobs:
       - name: Decide whether the gate is enforcing
         id: mode
         run: |
-          if [ "${{ github.base_ref }}" = "main" ]; then
+          # TEMPORARY: also enforcing on this branch, to demonstrate a failing gate.
+          # Reverted in the next commit.
+          if [ "${{ github.base_ref }}" = "main" ] || [ "${{ github.head_ref }}" = "feature/perf-gate" ]; then
             echo "enforcing=true"  >> "$GITHUB_OUTPUT"
             echo "flag="           >> "$GITHUB_OUTPUT"
           else

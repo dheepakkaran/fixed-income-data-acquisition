@@ -47,8 +47,10 @@ public static class AutoLoanXmlParser
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
+        // TEMPORARY: deliberately slow, to prove the performance gate catches a regression.
+        // Reverted in the next commit. A 64-byte read buffer instead of 1 MiB.
         var stream = new FileStream(
-            path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, useAsync: true);
+            path, FileMode.Open, FileAccess.Read, FileShare.Read, 64, useAsync: true);
 
         return ParseAsync(stream, trustCik, ownsStream: true, cancellationToken);
     }
