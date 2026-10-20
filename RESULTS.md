@@ -90,11 +90,11 @@ the extra complexity of the staging table has stopped paying for itself and the 
 
 | Suite | Tests | Duration |
 |---|---:|---:|
-| `DataAcquisition.UnitTests` | 120 | 5 s |
+| `DataAcquisition.UnitTests` | 127 | 5 s |
 | `DataAcquisition.IntegrationTests` (Testcontainers, real PostgreSQL 16) | 48 | 8 s |
-| **Total** | **168** | |
+| **Total** | **175** | |
 
-**Line coverage: 61.1%** (2,686 of 4,394 coverable lines), as the union of both suites.
+**Line coverage: 61.1%** (2,721 of 4,455 coverable lines), as the union of both suites.
 Counted as a union rather than by adding the two coverlet reports together: both measure the
 same lines, so summing them reports a different and misleading figure.
 
