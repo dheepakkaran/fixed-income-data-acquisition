@@ -1,57 +1,36 @@
 # PROGRESS
 
 ## Done
-- **Setup** — solution skeleton (10 projects), build config, `docker-compose.yml`
-  (Postgres 16 on host port 55432), minimal `ci.yml`. Repo public, `main` and `develop`
-  protected, Pages enabled (source: GitHub Actions).
-- **Live research** — SEC ABS-EE and Treasury endpoints, formats and field names verified
-  against real downloads and the official XSD (ABS XML Technical Specification v3.1).
-- **`feature/core-pipeline`** (PR #1, merged) — `IDataProvider`, `DataProviderBase` template
-  method, `IngestionRun`, `ProviderRegistry`, `ValidationResult`.
-- **`feature/storage-postgres`** (PR #2, merged) — DbUp migrations, `CopyBulkLoader`
-  (binary COPY into staging then one upsert, one transaction), `InsertBulkLoader` baseline,
-  Dapper `IngestionRunStore`, filesystem raw-file cache.
-- **`feature/provider-sec-abs-ee`** — streaming `XmlReader` parser, EDGAR client, paced rate
-  limiter, validator, migration `0002_auto_loan_asset_data.sql`, CLI (`migrate`, `ingest`,
-  `status`). **316,091 real loan-level records ingested** from 3 trusts x 3 periods.
-  83 tests, 70.7% line coverage. See RESULTS.md.
 
-- **`feature/release-workflows`** — `release.yml` (publishes a self-contained CLI for
-  linux-x64 and osx-arm64 on a `v*` tag) and `production-run.yml` (monthly schedule plus
-  manual dispatch, main only, Postgres service, migrations, ingest, logs as an artifact,
-  SEC downloads cached by month). The Pages deployment step is added with the report.
+| Branch | PR | What |
+|---|---|---|
+| Setup (on `main`) | — | Solution skeleton, build config, `docker-compose.yml`, minimal `ci.yml`. Repo public, `main` and `develop` protected, Pages enabled. |
+| `feature/core-pipeline` | #1 | `IDataProvider`, `DataProviderBase` template method, `IngestionRun`, `ProviderRegistry`, `ValidationResult`. |
+| `feature/storage-postgres` | #2 | DbUp migrations, `CopyBulkLoader` (binary COPY → staging → one upsert, one transaction), `InsertBulkLoader` baseline, Dapper run store, raw-file cache. |
+| `feature/provider-sec-abs-ee` | #3 | Streaming `XmlReader` parser, EDGAR client, paced rate limiter, validator, migration 0002, CLI (`migrate`, `ingest`, `status`). **316,091 real records.** |
+| `feature/release-workflows` | #4 | `release.yml`, `production-run.yml`. |
+| **`v0.1.0`** | #5 | Tagged, GitHub Release, self-contained CLI for linux-x64 and osx-arm64, production run executed from `main`. |
+| `fix/production-run-reliability` | #6 | `pipefail` on the ingest step, download retry with a `Content-Length` check, a rate-limiter test that no longer measures the thread pool. |
+| `feature/provider-treasury-yields` | #7 | Second provider, second asset class. 6,255 par yield points. `git diff develop --stat -- src/DataAcquisition.Core` prints nothing. |
+| `feature/abs-pool-report` | #8 | Migration 0004 (three views), `docs/metrics.md`, static HTML with inline SVG and no JavaScript, CSV per trust, `report --out ./site`, Pages deploy gated on ingestion. |
+| `feature/perf-gate` | #9 | 8 benchmarks, `tools/PerfGate`, the `perf-gate` job, `capture-baseline.yml`. **Shown failing in CI on a deliberate regression and passing after the revert.** |
+| `feature/docs-and-runbook` | #10 | README with a Mermaid diagram, `docs/architecture.md`, `docs/adding-a-provider.md`, `docs/runbook.md`. Report generator tests closed a real coverage gap. |
 
-- **`fix/production-run-reliability`** (PR #6, merged) — `pipefail` on the ingest step (the
-  first production run reported success with a failed source), application-level download
-  retry with a `Content-Length` check, and a rate-limiter test that no longer measures the
-  thread pool.
-- **`v0.1.0` released** — tag, GitHub Release, self-contained CLI for linux-x64 and
-  osx-arm64, production run executed from `main`.
-- **`feature/provider-treasury-yields`** — second provider, second asset class. 6,255 par
-  yield points over 2 calendar years. `git diff develop --stat -- src/DataAcquisition.Core`
-  prints nothing.
-
-- **`feature/abs-pool-report`** — SQL views (`v_pool_period`, `v_pool_cumulative_loss`,
-  `v_pool_spread`), `docs/metrics.md`, static HTML report with inline SVG charts and no
-  JavaScript, a CSV per trust, and `report --out ./site`. The production run now generates
-  the report and deploys it to Pages in a separate job, so nothing publishes when ingestion
-  failed.
-
-- **`feature/perf-gate`** — 8 BenchmarkDotNet benchmarks, `tools/PerfGate`, the `perf-gate`
-  CI job (enforcing into `main`, report-only into `develop`), and `capture-baseline.yml`.
-  The gate was shown failing in CI on a deliberate regression and passing after the revert;
-  numbers in RESULTS.md section 6.
+**168 tests** (120 unit, 48 integration), 61.1% line coverage, `dotnet build -warnaserror`
+clean. Measured numbers in [RESULTS.md](RESULTS.md); 19 decisions in
+[docs/decisions.md](docs/decisions.md).
 
 ## Next
-- `feature/docs-and-runbook`, then release `v1.0.0`
+- Release `v1.0.0`: release PR, tag, GitHub Release, production run to Pages.
+- Add `perf-gate` to `main`'s required status checks, now that the job exists on `main` (D1).
+- Refresh `benchmarks/baseline.json` from a CI runner via `capture-baseline`, through a
+  `chore/` branch into `develop` (D18).
 
 ## Open issues
-- `perf-gate` is not yet a required status check on `main`; it is added in
-  `feature/perf-gate` (`docs/decisions.md` D1).
-- `docs/metrics.md` must state that ABS-EE rates are decimal fractions while Treasury par
-  yields are percentages. Getting that conversion wrong is a 100x error in the spread.
-- `benchmarks/baseline.json` is currently a LOCAL capture (Apple M5). It must be refreshed
-  from a CI runner via the `capture-baseline` workflow before the gate's numbers mean
-  anything on a release PR (`docs/decisions.md` D18). This is part of the v1.0.0 release.
-- `perf-gate` still needs adding to `main`'s required status checks (D1), which happens once
-  the job exists on `main`.
+- `benchmarks/baseline.json` is still a **local** capture (Apple M5) while CI runs on
+  `ubuntu-latest`, so the gate's percentages on a CI run are not yet meaningful. Fixed by the
+  baseline refresh above; the gate is report-only into `develop` until then.
+- Coverage is uneven (Reports 88.2%, Storage 40.6%). What is uncovered is mostly the EDGAR and
+  Treasury HTTP paths, which need live network calls, and DI registration.
+- Cumulative net loss covers the periods ingested, not pool inception — the monthly filings do
+  not state the balance at issuance. Stated on the report page itself.

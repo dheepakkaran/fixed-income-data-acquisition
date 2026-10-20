@@ -75,13 +75,28 @@ the extra complexity of the staging table has stopped paying for itself and the 
 
 | Suite | Tests | Duration |
 |---|---:|---:|
-| `DataAcquisition.UnitTests` | 60 | 5 s |
-| `DataAcquisition.IntegrationTests` (Testcontainers, real PostgreSQL 16) | 23 | 7 s |
-| **Total** | **83** | |
+| `DataAcquisition.UnitTests` | 120 | 5 s |
+| `DataAcquisition.IntegrationTests` (Testcontainers, real PostgreSQL 16) | 48 | 8 s |
+| **Total** | **168** | |
 
-**Line coverage: 70.7%** (862 of 1,220 coverable lines), as the union of both suites.
+**Line coverage: 61.1%** (2,686 of 4,394 coverable lines), as the union of both suites.
 Counted as a union rather than by adding the two coverlet reports together: both measure the
-same 1,220 lines, so summing them double-counts and reports a misleading 49.9%.
+same lines, so summing them reports a different and misleading figure.
+
+| Assembly | Covered | |
+|---|---:|---:|
+| `DataAcquisition.Reports` | 1,027 / 1,164 | 88.2% |
+| `DataAcquisition.Core` | 454 / 590 | 76.9% |
+| `PerfGate` | 119 / 228 | 52.2% |
+| `DataAcquisition.Providers.TreasuryYields` | 231 / 476 | 48.5% |
+| `DataAcquisition.Providers.SecAbsEe` | 543 / 1,168 | 46.5% |
+| `DataAcquisition.Storage` | 312 / 768 | 40.6% |
+
+The spread is uneven on purpose. What is left uncovered in the provider and storage
+assemblies is mostly the EDGAR and Treasury HTTP paths, which would need live network calls,
+and DI registration. `Reports` was at 39.3% until `ReportGeneratorTests` was added: the metric
+SQL had been tested directly against the views, which left the code that *reads* them
+untested — a gap a view test cannot close.
 
 ## 5. Data quality found in the real filings
 
