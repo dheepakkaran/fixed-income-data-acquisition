@@ -31,12 +31,18 @@
   yield points over 2 calendar years. `git diff develop --stat -- src/DataAcquisition.Core`
   prints nothing.
 
+- **`feature/abs-pool-report`** — SQL views (`v_pool_period`, `v_pool_cumulative_loss`,
+  `v_pool_spread`), `docs/metrics.md`, static HTML report with inline SVG charts and no
+  JavaScript, a CSV per trust, and `report --out ./site`. The production run now generates
+  the report and deploys it to Pages in a separate job, so nothing publishes when ingestion
+  failed.
+
 ## Next
-- `feature/abs-pool-report`
+- `feature/perf-gate`
 
 ## Open issues
 - `perf-gate` is not yet a required status check on `main`; it is added in
   `feature/perf-gate` (`docs/decisions.md` D1).
 - `docs/metrics.md` must state that ABS-EE rates are decimal fractions while Treasury par
   yields are percentages. Getting that conversion wrong is a 100x error in the spread.
-- The report, its SQL views and GitHub Pages deployment are not built yet.
+- The benchmarks and the performance-regression gate are not built yet.
