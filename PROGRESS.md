@@ -16,8 +16,13 @@
   `status`). **316,091 real loan-level records ingested** from 3 trusts x 3 periods.
   83 tests, 70.7% line coverage. See RESULTS.md.
 
+- **`feature/release-workflows`** — `release.yml` (publishes a self-contained CLI for
+  linux-x64 and osx-arm64 on a `v*` tag) and `production-run.yml` (monthly schedule plus
+  manual dispatch, main only, Postgres service, migrations, ingest, logs as an artifact,
+  SEC downloads cached by month). The Pages deployment step is added with the report.
+
 ## Next
-- `feature/provider-treasury-yields`
+- Release `v0.1.0`, then `feature/provider-treasury-yields`
 
 ## Open issues
 - `perf-gate` is not yet a required status check on `main`; it is added in
