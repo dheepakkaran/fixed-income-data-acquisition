@@ -48,6 +48,15 @@ public abstract class DataProviderBase<TRecord> : IDataProvider<TRecord>
     /// </summary>
     protected virtual int BatchSize => 10_000;
 
+    /// <summary>
+    /// Whether a source that yields no records counts as success. False by default: an
+    /// ABS-EE exhibit or a yield-curve feed with nothing in it means the parser, the format
+    /// or the upstream file is wrong, and reporting that as a successful run hides the
+    /// fault behind a green tick. A provider whose sources can legitimately be empty
+    /// overrides this.
+    /// </summary>
+    protected virtual bool AllowEmptySources => false;
+
     public abstract Task<IReadOnlyList<DataSource>> DiscoverAsync(
         IngestionOptions options,
         CancellationToken cancellationToken);
@@ -182,6 +191,16 @@ public abstract class DataProviderBase<TRecord> : IDataProvider<TRecord>
         try
         {
             var outcome = await StreamIntoSinkAsync(fetched, cancellationToken).ConfigureAwait(false);
+
+            if (outcome.Parsed == 0 && !AllowEmptySources)
+            {
+                var empty =
+                    $"parsed 0 records from {fetched.SizeBytes:N0} bytes; " +
+                    "an empty source means the file or the parser is wrong, not that there was nothing to do";
+                Logger.LogError("Load abandoned for {Source}: {Message}", source, empty);
+
+                return await FailAsync(run, empty, cancellationToken).ConfigureAwait(false);
+            }
 
             if (outcome.Validation.HasErrors)
             {
