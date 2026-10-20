@@ -37,12 +37,21 @@
   the report and deploys it to Pages in a separate job, so nothing publishes when ingestion
   failed.
 
+- **`feature/perf-gate`** — 8 BenchmarkDotNet benchmarks, `tools/PerfGate`, the `perf-gate`
+  CI job (enforcing into `main`, report-only into `develop`), and `capture-baseline.yml`.
+  The gate was shown failing in CI on a deliberate regression and passing after the revert;
+  numbers in RESULTS.md section 6.
+
 ## Next
-- `feature/perf-gate`
+- `feature/docs-and-runbook`, then release `v1.0.0`
 
 ## Open issues
 - `perf-gate` is not yet a required status check on `main`; it is added in
   `feature/perf-gate` (`docs/decisions.md` D1).
 - `docs/metrics.md` must state that ABS-EE rates are decimal fractions while Treasury par
   yields are percentages. Getting that conversion wrong is a 100x error in the spread.
-- The benchmarks and the performance-regression gate are not built yet.
+- `benchmarks/baseline.json` is currently a LOCAL capture (Apple M5). It must be refreshed
+  from a CI runner via the `capture-baseline` workflow before the gate's numbers mean
+  anything on a release PR (`docs/decisions.md` D18). This is part of the v1.0.0 release.
+- `perf-gate` still needs adding to `main`'s required status checks (D1), which happens once
+  the job exists on `main`.

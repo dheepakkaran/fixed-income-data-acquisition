@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-10-20T07:27:15.534426+00:00",
+  "commit": "dea085c",
+  "runtime": "Unix 27.0.0",
+  "benchmarks": {
+    "ParserBenchmarks.ParseAndAggregate": {
+      "meanNs": 1424954.548828125,
+      "allocatedBytes": 2024249
+    },
+    "ParserBenchmarks.ParsePrettyPrinted": {
+      "meanNs": 1359500.8754882812,
+      "allocatedBytes": 2024232
+    },
+    "ParserBenchmarks.ParseSingleLine": {
+      "meanNs": 1202524.9038085938,
+      "allocatedBytes": 2038754
+    },
+    "ParserBenchmarks.ParseTreasuryCurve": {
+      "meanNs": 67920.77941894531,
+      "allocatedBytes": 210004
+    },
+    "StorageBenchmarks.CopyLoad[Records=10000]": {
+      "meanNs": 84786250.00000001,
+      "allocatedBytes": 3392560
+    },
+    "StorageBenchmarks.CumulativeLossQuery[Records=10000]": {
+      "meanNs": 2507115.3134765625,
+      "allocatedBytes": 3070
+    },
+    "StorageBenchmarks.PoolPeriodQuery[Records=10000]": {
+      "meanNs": 7225091.2265625,
+      "allocatedBytes": 4344
+    },
+    "StorageBenchmarks.SpreadQuery[Records=10000]": {
+      "meanNs": 4090214.83984375,
+      "allocatedBytes": 3168
+    }
+  }
+}

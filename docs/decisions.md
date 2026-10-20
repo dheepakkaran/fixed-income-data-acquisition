@@ -261,3 +261,81 @@ and deploying in one job would mean a partial ingest could still publish, and a 
 quietly covers eight of nine sources is worse than no new report: the page would look current
 and be wrong. Separating them makes "nothing publishes unless every source loaded" a property
 of the graph rather than of step ordering.
+
+---
+
+## D17 — The perf gate is enforcing on release PRs and report-only into `develop`
+
+**Decision.** `perf-gate` fails the build on a pull request into `main` and reports without
+failing on a pull request into `develop`. Threshold 15% on either mean time or allocated
+memory.
+
+**Why.** The gate's job is to stop a performance regression reaching production, and the only
+pull request that reaches production is the release pull request into `main`. Blocking every
+feature branch as well would buy very little and cost a lot, because of how the measurement
+actually behaves.
+
+The benchmarks run as a BenchmarkDotNet `ShortRun` (2 warmups, 5 iterations) on a shared
+GitHub runner. That is a deliberate trade: a full run would take tens of minutes on every
+release for precision the 15% threshold never uses. The price is variance, and a noisy gate
+that blocks merges is one people learn to re-run until it passes — at which point it is worse
+than no gate, because it looks like protection. Report-only on feature branches keeps the
+number in front of whoever wrote the change, where it is useful, without teaching anyone to
+ignore a red tick.
+
+The same reasoning sets the threshold. 15% is well outside the run-to-run spread of a short
+job on a shared runner but far inside anything that matters: the COPY path is 8.9x faster than
+row-by-row INSERT, and a change that gave that advantage back would show as hundreds of
+percent, not seventeen.
+
+**Also:** a missing `benchmarks/baseline.json` is not a regression. The gate reports that
+there is nothing to compare against and exits 0, because failing a pull request over an absent
+file rather than a slow change would be a false alarm on the very first run.
+
+**Rejected.** Enforcing everywhere with a wider threshold. A threshold loose enough to absorb
+runner noise on every branch would be loose enough to let a real regression through on the one
+branch that matters.
+
+---
+
+## D18 — The baseline is captured on a CI runner, not a developer machine
+
+**Decision.** `benchmarks/baseline.json` is produced by the `capture-baseline` workflow
+running on `ubuntu-latest` from `main`, and refreshed that way after each release. It is
+uploaded as an artifact and committed through a `chore/` branch rather than pushed by the
+workflow, because `main` is protected and a workflow pushing to it would bypass the review
+the protection exists for.
+
+**Why.** Found by getting it wrong. The first baseline was captured locally on an Apple M5
+and compared against an `ubuntu-latest` runner. The gate then reported **all eight**
+benchmarks as regressed, including `ParseTreasuryCurve` at **+211.7%** — a benchmark the
+change under test barely touched, which measured −5.1% against the same baseline locally.
+
+The gate was not wrong; the comparison was meaningless. A baseline and a run from different
+machines measure the hardware, and the difference swamps anything the threshold is there to
+catch. It also fails in the dangerous direction: the noise is positive, so everything looks
+like a regression, and a gate that cries wolf on every release is one that gets bypassed.
+
+**Consequence for reading the demonstration in RESULTS.md.** The deliberate regression's CI
+numbers (+499% on the pretty-printed parser) are inflated by this, which is why the local
+measurement against a local baseline (+203%) is reported alongside them. Both show the gate
+catching the regression; only the local pair is a clean measurement of its size.
+
+---
+
+## D19 — A failed PR comment does not fail the perf gate
+
+**Decision.** The `perf-gate` job declares `pull-requests: write`, and the comment step
+carries `continue-on-error: true`.
+
+**Why.** Both halves were learned from one red build. The job had no `permissions` block, so
+it ran with the default restricted token and the comment step failed with
+`GraphQL: Resource not accessible by integration (addComment)` — *after* the gate itself had
+already passed. The job went red for a posting problem, which is the gate reporting something
+it does not measure.
+
+The permission fixes the cause. `continue-on-error` covers the rest: GitHub can refuse a
+comment for reasons that have nothing to do with performance — a fork's token, a disabled
+feature, an API outage — and the verdict is already carried by the step's exit code and the
+job summary. A gate that goes red for reasons unrelated to performance is a gate that gets
+ignored, which is the same failure mode D17 is written to avoid.

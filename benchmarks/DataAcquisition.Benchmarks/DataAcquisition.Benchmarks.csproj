@@ -1,5 +1,19 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DataAcquisition.Core\DataAcquisition.Core.csproj" />
+    <ProjectReference Include="..\..\src\DataAcquisition.Storage\DataAcquisition.Storage.csproj" />
+    <ProjectReference Include="..\..\src\DataAcquisition.Providers.SecAbsEe\DataAcquisition.Providers.SecAbsEe.csproj" />
+    <ProjectReference Include="..\..\src\DataAcquisition.Reports\DataAcquisition.Reports.csproj" />
+    <ProjectReference Include="..\..\src\DataAcquisition.Providers.TreasuryYields\DataAcquisition.Providers.TreasuryYields.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageReference Include="Dapper" Version="2.1.89" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
