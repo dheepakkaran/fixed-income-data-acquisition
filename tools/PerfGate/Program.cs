@@ -32,16 +32,18 @@ static int Compare(Dictionary<string, string> options)
 
     var reportOnly = options.ContainsKey("report-only");
 
-    Dictionary<string, BenchmarkMeasurement> current;
+    BenchmarkRun run;
     try
     {
-        current = BenchmarkResultReader.Read(resultsDirectory);
+        run = BenchmarkResultReader.ReadRun(resultsDirectory);
     }
     catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException)
     {
         Console.Error.WriteLine($"error: {ex.Message}");
         return 2;
     }
+
+    var current = run.Measurements;
 
     if (!File.Exists(baselinePath))
     {
@@ -58,8 +60,23 @@ static int Compare(Dictionary<string, string> options)
     var baseline = JsonSerializer.Deserialize<Baseline>(File.ReadAllText(baselinePath))
         ?? new Baseline();
 
-    var result = GateResult.Compare(current, baseline, threshold);
+    var result = GateResult.Compare(current, baseline, threshold) with
+    {
+        BaselineHost = baseline.Runtime,
+        CurrentHost = run.Host,
+    };
+
     var markdown = result.ToMarkdown(enforcing: !reportOnly);
+
+    if (result.HostMismatch)
+    {
+        // Loud, but not fatal. The percentages are meaningless rather than bad, and failing
+        // here would block a release on a stale baseline instead of on a slow change.
+        Console.Error.WriteLine(
+            "::warning::The baseline and this run came from different machines, so the "
+            + $"percentages are not meaningful. Baseline: '{result.BaselineHost}'. "
+            + $"This run: '{result.CurrentHost}'.");
+    }
 
     Console.WriteLine(markdown);
     Write(options, markdown, reportOnly);
@@ -94,10 +111,10 @@ static int Capture(Dictionary<string, string> options)
     var resultsDirectory = options.GetValueOrDefault("results", "BenchmarkDotNet.Artifacts/results");
     var outputPath = options.GetValueOrDefault("out", "benchmarks/baseline.json");
 
-    Dictionary<string, BenchmarkMeasurement> current;
+    BenchmarkRun run;
     try
     {
-        current = BenchmarkResultReader.Read(resultsDirectory);
+        run = BenchmarkResultReader.ReadRun(resultsDirectory);
     }
     catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException)
     {
@@ -105,11 +122,17 @@ static int Capture(Dictionary<string, string> options)
         return 2;
     }
 
+    var current = run.Measurements;
+
     var baseline = new Baseline
     {
         GeneratedAt = DateTimeOffset.UtcNow,
         Commit = options.GetValueOrDefault("commit"),
-        Runtime = Environment.GetEnvironmentVariable("RUNNER_OS") ?? Environment.OSVersion.ToString(),
+
+        // From the report, not from this process: `capture` is often run somewhere other than
+        // where the benchmarks ran, and a baseline that misreports its own machine defeats
+        // the cross-machine check it exists for.
+        Runtime = run.Host ?? Environment.OSVersion.ToString(),
         Benchmarks = current.OrderBy(kv => kv.Key, StringComparer.Ordinal)
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal),
     };

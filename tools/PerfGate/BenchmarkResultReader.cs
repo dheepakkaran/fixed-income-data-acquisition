@@ -4,6 +4,17 @@ using PerfGate.Model;
 
 namespace PerfGate;
 
+/// <summary>What BenchmarkDotNet recorded about the machine the run happened on.</summary>
+/// <param name="Measurements">One measurement per benchmark.</param>
+/// <param name="Host">
+/// Host description, taken from the report rather than from this process's environment: the
+/// capture may well run somewhere other than where the benchmarks did, and a baseline that
+/// misreports its own machine defeats the cross-machine check it exists for.
+/// </param>
+public sealed record BenchmarkRun(
+    Dictionary<string, BenchmarkMeasurement> Measurements,
+    string? Host);
+
 /// <summary>Reads BenchmarkDotNet's full JSON export.</summary>
 public static class BenchmarkResultReader
 {
@@ -12,7 +23,11 @@ public static class BenchmarkResultReader
     /// them into one measurement per benchmark, keyed by
     /// <c>Type.Method</c> plus any parameters.
     /// </summary>
-    public static Dictionary<string, BenchmarkMeasurement> Read(string directory)
+    public static Dictionary<string, BenchmarkMeasurement> Read(string directory) =>
+        ReadRun(directory).Measurements;
+
+    /// <summary>As <see cref="Read"/>, and also the host the run was measured on.</summary>
+    public static BenchmarkRun ReadRun(string directory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
 
@@ -33,10 +48,13 @@ public static class BenchmarkResultReader
         }
 
         var measurements = new Dictionary<string, BenchmarkMeasurement>(StringComparer.Ordinal);
+        string? host = null;
 
         foreach (var file in files)
         {
             using var document = JsonDocument.Parse(File.ReadAllText(file));
+
+            host ??= DescribeHost(document.RootElement);
 
             if (!document.RootElement.TryGetProperty("Benchmarks", out var benchmarks))
             {
@@ -69,7 +87,32 @@ public static class BenchmarkResultReader
             }
         }
 
-        return measurements;
+        return new BenchmarkRun(measurements, host);
+    }
+
+    /// <summary>
+    /// A short, comparable description of the machine: OS, processor and architecture. Enough
+    /// to tell an Apple M5 from an Intel Xeon on an Ubuntu runner, which is the distinction
+    /// that matters.
+    /// </summary>
+    private static string? DescribeHost(JsonElement root)
+    {
+        if (!root.TryGetProperty("HostEnvironmentInfo", out var info)
+            || info.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        static string? Read(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+
+        var parts = new[] { Read(info, "OsVersion"), Read(info, "ProcessorName"), Read(info, "Architecture") }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .ToArray();
+
+        return parts.Length == 0 ? null : string.Join(" | ", parts);
     }
 
     /// <summary>

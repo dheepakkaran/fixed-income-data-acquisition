@@ -85,6 +85,39 @@ public sealed class BenchmarkResultReaderTests : IDisposable
     }
 
     [Fact]
+    public void The_host_is_read_from_the_report_not_from_this_process()
+    {
+        // capture is often run somewhere other than where the benchmarks ran - reading CI
+        // artifacts on a laptop, for instance - and a baseline that records the wrong machine
+        // defeats the cross-machine check it exists for.
+        WriteReport("Suite", """
+            {
+              "HostEnvironmentInfo": {
+                "OsVersion": "Linux Ubuntu 24.04.5 LTS (Noble Numbat)",
+                "ProcessorName": "Intel Xeon Platinum 8370C CPU 2.80GHz",
+                "Architecture": "X64"
+              },
+              "Benchmarks": [{ "Type": "X", "Method": "m", "Statistics": { "Mean": 1 } }]
+            }
+            """);
+
+        var run = BenchmarkResultReader.ReadRun(_directory);
+
+        Assert.NotNull(run.Host);
+        Assert.Contains("Ubuntu", run.Host, StringComparison.Ordinal);
+        Assert.Contains("Xeon", run.Host, StringComparison.Ordinal);
+        Assert.Contains("X64", run.Host, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_report_without_host_information_reads_a_null_host()
+    {
+        WriteReport("Suite", """{"Benchmarks":[{"Type":"X","Method":"m","Statistics":{"Mean":1}}]}""");
+
+        Assert.Null(BenchmarkResultReader.ReadRun(_directory).Host);
+    }
+
+    [Fact]
     public void A_missing_directory_is_an_error_rather_than_an_empty_pass()
     {
         // Silently reporting zero benchmarks would let a broken benchmark step pass the gate.

@@ -321,6 +321,24 @@ numbers (+499% on the pretty-printed parser) are inflated by this, which is why 
 measurement against a local baseline (+203%) is reported alongside them. Both show the gate
 catching the regression; only the local pair is a clean measurement of its size.
 
+**The gate now detects this itself**, rather than relying on anyone reading this note. Each
+baseline records the machine its measurements came from, taken from BenchmarkDotNet's
+`HostEnvironmentInfo` in the report rather than from the environment of whatever process ran
+`capture` — the first CI baseline was captured on a laptop from downloaded artifacts and duly
+recorded the laptop. When the baseline's host differs from the current run's, `compare` prints
+a GitHub warning annotation and puts a block at the top of the markdown naming both machines.
+
+It warns rather than fails: the percentages are *meaningless*, not bad, and failing there would
+block a release on a stale baseline instead of on a slow change.
+
+For the record, the two machines differ by a factor of 2.2 to 2.8:
+
+| Benchmark | Apple M5 | ubuntu-latest (Xeon 8370C) |
+|---|---:|---:|
+| `ParsePrettyPrinted` | 1.360 ms | 3.013 ms |
+| `CopyLoad[Records=10000]` | 84.786 ms | 199.826 ms |
+| `PoolPeriodQuery[Records=10000]` | 7.225 ms | 20.300 ms |
+
 ---
 
 ## D19 — A failed PR comment does not fail the perf gate

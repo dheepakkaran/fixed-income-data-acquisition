@@ -1,39 +1,39 @@
 {
-  "generatedAt": "2026-10-20T07:27:15.534426+00:00",
-  "commit": "dea085c",
-  "runtime": "Unix 27.0.0",
+  "generatedAt": "2026-10-20T07:56:24.690402+00:00",
+  "commit": "c2a791b",
+  "runtime": "Linux Ubuntu 24.04.5 LTS (Noble Numbat) | Intel Xeon Platinum 8370C CPU 2.80GHz | X64",
   "benchmarks": {
     "ParserBenchmarks.ParseAndAggregate": {
-      "meanNs": 1424954.548828125,
-      "allocatedBytes": 2024249
+      "meanNs": 3050529.8296875,
+      "allocatedBytes": 1049017
     },
     "ParserBenchmarks.ParsePrettyPrinted": {
-      "meanNs": 1359500.8754882812,
-      "allocatedBytes": 2024232
+      "meanNs": 3013271.2216796875,
+      "allocatedBytes": 1049081
     },
     "ParserBenchmarks.ParseSingleLine": {
-      "meanNs": 1202524.9038085938,
-      "allocatedBytes": 2038754
+      "meanNs": 2541360.1787109375,
+      "allocatedBytes": 1061421
     },
     "ParserBenchmarks.ParseTreasuryCurve": {
-      "meanNs": 67920.77941894531,
-      "allocatedBytes": 210004
+      "meanNs": 153208.19470214844,
+      "allocatedBytes": 210862
     },
     "StorageBenchmarks.CopyLoad[Records=10000]": {
-      "meanNs": 84786250.00000001,
-      "allocatedBytes": 3392560
+      "meanNs": 199825683.8,
+      "allocatedBytes": 3393064
     },
     "StorageBenchmarks.CumulativeLossQuery[Records=10000]": {
-      "meanNs": 2507115.3134765625,
-      "allocatedBytes": 3070
+      "meanNs": 4309524.89765625,
+      "allocatedBytes": 2981
     },
     "StorageBenchmarks.PoolPeriodQuery[Records=10000]": {
-      "meanNs": 7225091.2265625,
-      "allocatedBytes": 4344
+      "meanNs": 20299639.4375,
+      "allocatedBytes": 4305
     },
     "StorageBenchmarks.SpreadQuery[Records=10000]": {
-      "meanNs": 4090214.83984375,
-      "allocatedBytes": 3168
+      "meanNs": 10256529.2640625,
+      "allocatedBytes": 3123
     }
   }
 }

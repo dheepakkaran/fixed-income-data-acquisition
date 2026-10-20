@@ -120,6 +120,55 @@ public sealed class GateResultTests
     }
 
     [Fact]
+    public void A_cross_machine_comparison_is_flagged_rather_than_read_as_a_verdict()
+    {
+        // The failure this catches actually happened: a baseline from an Apple M5 compared
+        // against an ubuntu-latest runner reported all eight benchmarks as regressed,
+        // including one measured at -5.1% on the same baseline locally.
+        var result = GateResult.Compare(
+            ResultsOf(("A", 3000, 100)), BaselineOf(("A", 1000, 100)), 15) with
+        {
+            BaselineHost = "Linux Ubuntu 24.04 | Intel Xeon Platinum 8370C | X64",
+            CurrentHost = "macOS 27.0 | Apple M5 | Arm64",
+        };
+
+        Assert.True(result.HostMismatch);
+
+        var markdown = result.ToMarkdown(enforcing: true);
+        Assert.Contains("different machines", markdown, StringComparison.Ordinal);
+        Assert.Contains("Apple M5", markdown, StringComparison.Ordinal);
+        Assert.Contains("Intel Xeon", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_same_machine_is_not_flagged()
+    {
+        var result = GateResult.Compare(
+            ResultsOf(("A", 1000, 100)), BaselineOf(("A", 1000, 100)), 15) with
+        {
+            BaselineHost = "Linux Ubuntu 24.04 | Intel Xeon Platinum 8370C | X64",
+            CurrentHost = "Linux Ubuntu 24.04 | Intel Xeon Platinum 8370C | X64",
+        };
+
+        Assert.False(result.HostMismatch);
+        Assert.DoesNotContain("different machines", result.ToMarkdown(enforcing: true), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_unknown_host_on_either_side_is_not_treated_as_a_mismatch()
+    {
+        // An older baseline predates host recording; that is not evidence of a mismatch.
+        var result = GateResult.Compare(
+            ResultsOf(("A", 1000, 100)), BaselineOf(("A", 1000, 100)), 15) with
+        {
+            BaselineHost = null,
+            CurrentHost = "macOS 27.0 | Apple M5 | Arm64",
+        };
+
+        Assert.False(result.HostMismatch);
+    }
+
+    [Fact]
     public void A_zero_baseline_does_not_divide_by_zero()
     {
         var result = GateResult.Compare(
