@@ -1,36 +1,50 @@
 # PROGRESS
 
+**Shipped.** `v1.0.0` is tagged, released and live.
+
+- Repository: <https://github.com/dheepakkaran/fixed-income-data-acquisition>
+- Live report: <https://dheepakkaran.github.io/fixed-income-data-acquisition/>
+- Releases: [`v0.1.0`](https://github.com/dheepakkaran/fixed-income-data-acquisition/releases/tag/v0.1.0) ·
+  [`v1.0.0`](https://github.com/dheepakkaran/fixed-income-data-acquisition/releases/tag/v1.0.0)
+
 ## Done
 
 | Branch | PR | What |
 |---|---|---|
-| Setup (on `main`) | — | Solution skeleton, build config, `docker-compose.yml`, minimal `ci.yml`. Repo public, `main` and `develop` protected, Pages enabled. |
+| Setup (on `main`) | — | Solution skeleton, build config, `docker-compose.yml`, minimal `ci.yml`. Repo public, both branches protected, Pages enabled. |
 | `feature/core-pipeline` | #1 | `IDataProvider`, `DataProviderBase` template method, `IngestionRun`, `ProviderRegistry`, `ValidationResult`. |
-| `feature/storage-postgres` | #2 | DbUp migrations, `CopyBulkLoader` (binary COPY → staging → one upsert, one transaction), `InsertBulkLoader` baseline, Dapper run store, raw-file cache. |
-| `feature/provider-sec-abs-ee` | #3 | Streaming `XmlReader` parser, EDGAR client, paced rate limiter, validator, migration 0002, CLI (`migrate`, `ingest`, `status`). **316,091 real records.** |
+| `feature/storage-postgres` | #2 | DbUp migrations, `CopyBulkLoader`, `InsertBulkLoader` baseline, Dapper run store, raw-file cache. |
+| `feature/provider-sec-abs-ee` | #3 | Streaming parser, EDGAR client, paced rate limiter, validator, migration 0002, CLI. **316,091 real records.** |
 | `feature/release-workflows` | #4 | `release.yml`, `production-run.yml`. |
-| **`v0.1.0`** | #5 | Tagged, GitHub Release, self-contained CLI for linux-x64 and osx-arm64, production run executed from `main`. |
-| `fix/production-run-reliability` | #6 | `pipefail` on the ingest step, download retry with a `Content-Length` check, a rate-limiter test that no longer measures the thread pool. |
-| `feature/provider-treasury-yields` | #7 | Second provider, second asset class. 6,255 par yield points. `git diff develop --stat -- src/DataAcquisition.Core` prints nothing. |
-| `feature/abs-pool-report` | #8 | Migration 0004 (three views), `docs/metrics.md`, static HTML with inline SVG and no JavaScript, CSV per trust, `report --out ./site`, Pages deploy gated on ingestion. |
-| `feature/perf-gate` | #9 | 8 benchmarks, `tools/PerfGate`, the `perf-gate` job, `capture-baseline.yml`. **Shown failing in CI on a deliberate regression and passing after the revert.** |
-| `feature/docs-and-runbook` | #10 | README with a Mermaid diagram, `docs/architecture.md`, `docs/adding-a-provider.md`, `docs/runbook.md`. Report generator tests closed a real coverage gap. |
+| **`v0.1.0`** | #5 | Tagged, released, production run from `main`. |
+| `fix/production-run-reliability` | #6 | `pipefail`, download retry with a length check, a rate-limiter test that stopped measuring the thread pool. |
+| `feature/provider-treasury-yields` | #7 | Second provider, second asset class, **zero Core changes**. 6,255 par yield points. |
+| `feature/abs-pool-report` | #8 | Three SQL views, `docs/metrics.md`, static HTML with inline SVG, CSV per trust, Pages deploy gated on ingestion. |
+| `feature/perf-gate` | #9 | 8 benchmarks, `tools/PerfGate`, the `perf-gate` job, `capture-baseline.yml`. Shown failing and passing in CI. |
+| `feature/docs-and-runbook` | #10 | README with a Mermaid diagram, architecture, adding-a-provider, runbook. Report generator tests closed a coverage gap. |
+| `chore/ci-perf-baseline` | #11 | Baseline captured on a CI runner; the gate now records and checks the machine. |
+| `fix/perf-gate-thresholds` | #13 | Separate thresholds for time and memory, after two CPU models in one runner pool differed by 33%. |
+| **`v1.0.0`** | #12 | Tagged, released, production run published to Pages. |
+| `chore/final-results` | #14 | Final measured numbers. |
 
-**168 tests** (120 unit, 48 integration), 61.1% line coverage, `dotnet build -warnaserror`
-clean. Measured numbers in [RESULTS.md](RESULTS.md); 19 decisions in
-[docs/decisions.md](docs/decisions.md).
-
-## Next
-- Release `v1.0.0`: release PR, tag, GitHub Release, production run to Pages.
-- Add `perf-gate` to `main`'s required status checks, now that the job exists on `main` (D1).
-- Refresh `benchmarks/baseline.json` from a CI runner via `capture-baseline`, through a
-  `chore/` branch into `develop` (D18).
+**170 tests** (127 unit, 43 integration), 61.1% line coverage, `dotnet build -warnaserror`
+clean, 20 decisions recorded.
 
 ## Open issues
-- `benchmarks/baseline.json` is still a **local** capture (Apple M5) while CI runs on
-  `ubuntu-latest`, so the gate's percentages on a CI run are not yet meaningful. Fixed by the
-  baseline refresh above; the gate is report-only into `develop` until then.
-- Coverage is uneven (Reports 88.2%, Storage 40.6%). What is uncovered is mostly the EDGAR and
-  Treasury HTTP paths, which need live network calls, and DI registration.
-- Cumulative net loss covers the periods ingested, not pool inception — the monthly filings do
-  not state the balance at issuance. Stated on the report page itself.
+
+None blocking. Three things a reader should know, each stated on the report page itself:
+
+- **Cumulative net loss covers the periods ingested, not pool inception.** The monthly filings
+  never state the pool's balance at issuance.
+- **The indicative spread is simplified** — a gross loan coupon less a nearest-tenor
+  government yield, not a discount margin or a Z-spread.
+- **Coverage is uneven** (Reports 88.2%, Storage 40.6%). What is uncovered is mostly the EDGAR
+  and Treasury HTTP paths, which would need live network calls.
+
+## If this were picked up again
+
+- Refresh `benchmarks/baseline.json` after each release via the **Capture perf baseline**
+  workflow, as `docs/runbook.md` describes. A baseline drifts.
+- More trusts is configuration only: add an entry to `appsettings.json`.
+- A third asset class would test the framework further than a second did — the two current
+  providers are both XML over HTTP.
