@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: production-run
@@ -116,6 +118,14 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Generate the report
+        run: dotnet run --project src/DataAcquisition.Cli -c Release --no-build -- report --out ./site
+
+      - name: Upload the report for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
       - name: Upload ingestion logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,3 +133,20 @@ jobs:
           name: ingestion-log
           path: ingestion.log
           retention-days: 30
+
+  # Deployment is a separate job so the report is only published when ingestion succeeded.
+  # A failed source fails the ingest job, and this job never runs.
+  deploy:
+    name: deploy
+    needs: ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

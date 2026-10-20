@@ -2,6 +2,7 @@ using DataAcquisition.Cli.Commands;
 using DataAcquisition.Core;
 using DataAcquisition.Providers.SecAbsEe;
 using DataAcquisition.Providers.TreasuryYields;
+using DataAcquisition.Reports;
 using DataAcquisition.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +32,7 @@ builder.Services.AddDataAcquisitionCore();
 builder.Services.AddDataAcquisitionStorage(builder.Configuration);
 builder.Services.AddSecAbsEeProvider(builder.Configuration);
 builder.Services.AddTreasuryYieldsProvider(builder.Configuration);
+builder.Services.AddPoolReport();
 
 using var host = builder.Build();
 
@@ -55,6 +57,7 @@ try
         "migrate" => await MigrateCommand.RunAsync(host.Services, cancellation.Token),
         "ingest" => await IngestCommand.RunAsync(host.Services, parsed, cancellation.Token),
         "status" => await StatusCommand.RunAsync(host.Services, parsed, cancellation.Token),
+        "report" => await ReportCommand.RunAsync(host.Services, parsed, cancellation.Token),
         _ => Unknown(parsed.Command),
     };
 }

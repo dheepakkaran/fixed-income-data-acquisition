@@ -65,6 +65,7 @@ public static class CommandLine
           migrate                              Apply pending database migrations.
           ingest  [options]                    Run the enabled providers.
           status  [options]                    Show recent ingestion runs.
+          report  [options]                    Generate the static ABS pool performance report.
 
         ingest options:
           --provider <name>                    Run one provider instead of all enabled ones.
@@ -76,5 +77,8 @@ public static class CommandLine
         status options:
           --provider <name>                    Filter by provider.
           --limit    <n>                       Rows to show (default 20).
+
+        report options:
+          --out <dir>                          Output directory (default ./site).
         """);
 }

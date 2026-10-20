@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\DataAcquisition.Core\DataAcquisition.Core.csproj" />
     <ProjectReference Include="..\..\src\DataAcquisition.Providers.SecAbsEe\DataAcquisition.Providers.SecAbsEe.csproj" />
     <ProjectReference Include="..\..\src\DataAcquisition.Providers.TreasuryYields\DataAcquisition.Providers.TreasuryYields.csproj" />
+    <ProjectReference Include="..\..\src\DataAcquisition.Reports\DataAcquisition.Reports.csproj" />
   </ItemGroup>
 
   <ItemGroup>

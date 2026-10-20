@@ -5,6 +5,7 @@
     <ProjectReference Include="..\DataAcquisition.Storage\DataAcquisition.Storage.csproj" />
     <ProjectReference Include="..\DataAcquisition.Providers.SecAbsEe\DataAcquisition.Providers.SecAbsEe.csproj" />
     <ProjectReference Include="..\DataAcquisition.Providers.TreasuryYields\DataAcquisition.Providers.TreasuryYields.csproj" />
+    <ProjectReference Include="..\DataAcquisition.Reports\DataAcquisition.Reports.csproj" />
   </ItemGroup>
 
   <ItemGroup>

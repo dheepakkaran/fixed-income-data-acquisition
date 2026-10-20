@@ -225,3 +225,39 @@ by nature: time-to-first-byte measured **19.5 seconds** for 2026 (310 KB), with 
 an explicit `Accept` header. The standard handler's 10-second attempt timeout cut every
 attempt off, and the first run failed both sources with a timeout that had nothing to do
 with the data. The numbers here are that measurement plus headroom, not a guess.
+
+---
+
+## D15 — Charge-offs are summed across periods, including the negatives
+
+**Decision.** `net_loss` for a period is `SUM(chargedoffPrincipalAmount) - SUM(recoveredAmount)`,
+and `cumulative_net_loss` is the running total of that. Negative charge-off amounts are summed
+as-is, not filtered out.
+
+**Why.** The schema cannot settle whether these fields are period flows or running totals: the
+Item 3(f) fields all say "during the reporting period" while Item 3(i)(1) says only "the amount
+of uncollected principal charged-off". The data settles it. One AmeriCredit loan reads
++18,975.81 at 2026-06-30, **−18,975.81** at 2026-07-31 with its balance restored and the
+zero-balance code gone, then +18,975.81 again at 2026-08-31: charged off, reversed by the
+servicer, charged off again. Summing the three periods gives +18,975.81, the correct net.
+Per-period totals are also non-monotonic across periods, which a running total could not be.
+
+Dropping the negatives would overstate losses by counting the reversed charge-off twice.
+
+**Not claimed.** This is cumulative over the periods ingested, not since pool inception. The
+monthly filings never state the pool's balance at issuance, and loans removed from a filing
+take their history with them. The report says so on the page rather than implying a
+since-inception figure.
+
+---
+
+## D16 — The Pages deployment is a separate job gated on ingestion
+
+**Decision.** `production-run.yml` generates the report in the `ingest` job and deploys it
+from a `deploy` job with `needs: ingest`.
+
+**Why.** A failed source fails the ingest job, and a dependent job does not run. Generating
+and deploying in one job would mean a partial ingest could still publish, and a report that
+quietly covers eight of nine sources is worse than no new report: the page would look current
+and be wrong. Separating them makes "nothing publishes unless every source loaded" a property
+of the graph rather than of step ordering.
