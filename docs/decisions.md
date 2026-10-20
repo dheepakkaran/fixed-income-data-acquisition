@@ -320,3 +320,22 @@ like a regression, and a gate that cries wolf on every release is one that gets 
 numbers (+499% on the pretty-printed parser) are inflated by this, which is why the local
 measurement against a local baseline (+203%) is reported alongside them. Both show the gate
 catching the regression; only the local pair is a clean measurement of its size.
+
+---
+
+## D19 — A failed PR comment does not fail the perf gate
+
+**Decision.** The `perf-gate` job declares `pull-requests: write`, and the comment step
+carries `continue-on-error: true`.
+
+**Why.** Both halves were learned from one red build. The job had no `permissions` block, so
+it ran with the default restricted token and the comment step failed with
+`GraphQL: Resource not accessible by integration (addComment)` — *after* the gate itself had
+already passed. The job went red for a posting problem, which is the gate reporting something
+it does not measure.
+
+The permission fixes the cause. `continue-on-error` covers the rest: GitHub can refuse a
+comment for reasons that have nothing to do with performance — a fork's token, a disabled
+feature, an API outage — and the verdict is already carried by the step's exit code and the
+job summary. A gate that goes red for reasons unrelated to performance is a gate that gets
+ignored, which is the same failure mode D17 is written to avoid.

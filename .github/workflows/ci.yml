@@ -91,6 +91,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # The default GITHUB_TOKEN cannot comment on a pull request: the first run failed with
+    # "Resource not accessible by integration (addComment)" after the gate itself had already
+    # passed.
+    permissions:
+      contents: read
+      pull-requests: write
+
     services:
       postgres:
         image: postgres:16
@@ -147,6 +154,7 @@ jobs:
 
       - name: Comment on the pull request
         if: always() && github.event_name == 'pull_request' && hashFiles('perf-gate-comment.md') != ''
+        continue-on-error: true
         run: gh pr comment "${{ github.event.pull_request.number }}" --body-file perf-gate-comment.md
         env:
           GH_TOKEN: ${{ github.token }}
