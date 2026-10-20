@@ -1,0 +1,94 @@
+name: Capture perf baseline
+
+# Captures benchmarks/baseline.json on a CI runner, from main.
+#
+# A baseline must come from the same class of machine as the runs it will be compared
+# against, or the comparison measures the hardware. Proved the hard way: a baseline captured
+# on an Apple M5 and compared against an ubuntu-latest runner reported every benchmark as
+# regressed, including one the change under test barely touched (+211.7% on a parser the
+# change did not slow locally). See docs/decisions.md D18.
+#
+# The run uploads the file as an artifact rather than committing it, because main is
+# protected and a workflow pushing to it would bypass the review the protection exists for.
+# The release process commits it through a chore/ branch into develop.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  capture:
+    name: capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fida
+          POSTGRES_PASSWORD: fida_ci
+          POSTGRES_DB: fida_bench
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fida -d fida_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      FIDA_CONNECTION_STRING: 'Host=localhost;Port=5432;Database=fida_bench;Username=fida;Password=fida_ci'
+
+    steps:
+      - name: Refuse to capture from anywhere but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::A baseline is captured from main only; this ref is ${{ github.ref }}."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build -c Release -warnaserror
+
+      - name: Run benchmarks
+        run: >
+          dotnet run --project benchmarks/DataAcquisition.Benchmarks
+          -c Release --no-build -- --filter '*'
+
+      - name: Capture the baseline
+        run: >
+          dotnet run --project tools/PerfGate -c Release --no-build --
+          capture
+          --results BenchmarkDotNet.Artifacts/results
+          --out benchmarks/baseline.json
+          --commit ${{ github.sha }}
+
+      - name: Summary
+        run: |
+          {
+            echo "## Captured baseline"
+            echo
+            echo 'Commit it into `develop` through a `chore/` branch.'
+            echo
+            echo '```json'
+            cat benchmarks/baseline.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline
+          path: benchmarks/baseline.json
+          retention-days: 30

@@ -295,3 +295,28 @@ file rather than a slow change would be a false alarm on the very first run.
 **Rejected.** Enforcing everywhere with a wider threshold. A threshold loose enough to absorb
 runner noise on every branch would be loose enough to let a real regression through on the one
 branch that matters.
+
+---
+
+## D18 — The baseline is captured on a CI runner, not a developer machine
+
+**Decision.** `benchmarks/baseline.json` is produced by the `capture-baseline` workflow
+running on `ubuntu-latest` from `main`, and refreshed that way after each release. It is
+uploaded as an artifact and committed through a `chore/` branch rather than pushed by the
+workflow, because `main` is protected and a workflow pushing to it would bypass the review
+the protection exists for.
+
+**Why.** Found by getting it wrong. The first baseline was captured locally on an Apple M5
+and compared against an `ubuntu-latest` runner. The gate then reported **all eight**
+benchmarks as regressed, including `ParseTreasuryCurve` at **+211.7%** — a benchmark the
+change under test barely touched, which measured −5.1% against the same baseline locally.
+
+The gate was not wrong; the comparison was meaningless. A baseline and a run from different
+machines measure the hardware, and the difference swamps anything the threshold is there to
+catch. It also fails in the dangerous direction: the noise is positive, so everything looks
+like a regression, and a gate that cries wolf on every release is one that gets bypassed.
+
+**Consequence for reading the demonstration in RESULTS.md.** The deliberate regression's CI
+numbers (+499% on the pretty-printed parser) are inflated by this, which is why the local
+measurement against a local baseline (+203%) is reported alongside them. Both show the gate
+catching the regression; only the local pair is a clean measurement of its size.

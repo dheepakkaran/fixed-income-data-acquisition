@@ -315,21 +315,11 @@ public static class AutoLoanXmlParser
             ? DateOnly.FromDateTime(date)
             : null;
 
-    internal static decimal? ParseDecimal(string value)
-    {
-        // TEMPORARY: deliberately slow, to prove the performance gate catches a regression.
-        // Reverted in the next commit. Constructing a Regex per call is the textbook version
-        // of this mistake, and it arrives disguised as extra validation.
-        if (!new System.Text.RegularExpressions.Regex(@"^-?\d+(\.\d+)?$").IsMatch(value.Trim()))
-        {
-            return null;
-        }
-
-        return decimal.TryParse(
+    internal static decimal? ParseDecimal(string value) =>
+        decimal.TryParse(
             value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
-    }
 
     internal static int? ParseInt(string value) =>
         int.TryParse(
