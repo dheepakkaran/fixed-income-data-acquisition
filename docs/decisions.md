@@ -261,3 +261,37 @@ and deploying in one job would mean a partial ingest could still publish, and a 
 quietly covers eight of nine sources is worse than no new report: the page would look current
 and be wrong. Separating them makes "nothing publishes unless every source loaded" a property
 of the graph rather than of step ordering.
+
+---
+
+## D17 — The perf gate is enforcing on release PRs and report-only into `develop`
+
+**Decision.** `perf-gate` fails the build on a pull request into `main` and reports without
+failing on a pull request into `develop`. Threshold 15% on either mean time or allocated
+memory.
+
+**Why.** The gate's job is to stop a performance regression reaching production, and the only
+pull request that reaches production is the release pull request into `main`. Blocking every
+feature branch as well would buy very little and cost a lot, because of how the measurement
+actually behaves.
+
+The benchmarks run as a BenchmarkDotNet `ShortRun` (2 warmups, 5 iterations) on a shared
+GitHub runner. That is a deliberate trade: a full run would take tens of minutes on every
+release for precision the 15% threshold never uses. The price is variance, and a noisy gate
+that blocks merges is one people learn to re-run until it passes — at which point it is worse
+than no gate, because it looks like protection. Report-only on feature branches keeps the
+number in front of whoever wrote the change, where it is useful, without teaching anyone to
+ignore a red tick.
+
+The same reasoning sets the threshold. 15% is well outside the run-to-run spread of a short
+job on a shared runner but far inside anything that matters: the COPY path is 8.9x faster than
+row-by-row INSERT, and a change that gave that advantage back would show as hundreds of
+percent, not seventeen.
+
+**Also:** a missing `benchmarks/baseline.json` is not a regression. The gate reports that
+there is nothing to compare against and exits 0, because failing a pull request over an absent
+file rather than a slow change would be a false alarm on the very first run.
+
+**Rejected.** Enforcing everywhere with a wider threshold. A threshold loose enough to absorb
+runner noise on every branch would be loose enough to let a real regression through on the one
+branch that matters.

@@ -78,3 +78,83 @@ jobs:
           name: test-results
           path: TestResults/
           retention-days: 7
+
+  # Analyses the performance of pre-production code: runs the benchmarks and compares them
+  # with benchmarks/baseline.json, which is captured from main after each release.
+  #
+  # Enforcing on release pull requests into main, report-only on pull requests into develop.
+  # Reasoning in docs/decisions.md D17: a short BenchmarkDotNet job on a shared runner is
+  # noisy enough that blocking every feature branch on it would train people to ignore it,
+  # while a release into production is worth waiting for a clean read.
+  perf-gate:
+    name: perf-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fida
+          POSTGRES_PASSWORD: fida_ci
+          POSTGRES_DB: fida_bench
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fida -d fida_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      FIDA_CONNECTION_STRING: 'Host=localhost;Port=5432;Database=fida_bench;Username=fida;Password=fida_ci'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Decide whether the gate is enforcing
+        id: mode
+        run: |
+          if [ "${{ github.base_ref }}" = "main" ]; then
+            echo "enforcing=true"  >> "$GITHUB_OUTPUT"
+            echo "flag="           >> "$GITHUB_OUTPUT"
+          else
+            echo "enforcing=false" >> "$GITHUB_OUTPUT"
+            echo "flag=--report-only" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: dotnet build -c Release -warnaserror
+
+      - name: Run benchmarks
+        run: >
+          dotnet run --project benchmarks/DataAcquisition.Benchmarks
+          -c Release --no-build -- --filter '*'
+
+      - name: Performance gate
+        run: >
+          dotnet run --project tools/PerfGate -c Release --no-build --
+          compare
+          --results BenchmarkDotNet.Artifacts/results
+          --baseline benchmarks/baseline.json
+          --threshold 15
+          --comment perf-gate-comment.md
+          ${{ steps.mode.outputs.flag }}
+
+      - name: Comment on the pull request
+        if: always() && github.event_name == 'pull_request' && hashFiles('perf-gate-comment.md') != ''
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file perf-gate-comment.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: BenchmarkDotNet.Artifacts/
+          retention-days: 14
