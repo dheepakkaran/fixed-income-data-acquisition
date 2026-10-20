@@ -136,8 +136,9 @@ dotnet run --project src/DataAcquisition.Cli -- report --out ./site
 
 ## What to check when the perf gate fails
 
-The gate compares mean time and allocated memory per benchmark with
-`benchmarks/baseline.json` and fails past **15%**. It is enforcing on pull requests into `main`
+The gate compares each benchmark with `benchmarks/baseline.json` and fails past **15% on
+allocated memory** or **50% on mean time**. The two differ because allocation is deterministic
+while time carries the hardware's variance (D20). It is enforcing on pull requests into `main`
 and report-only into `develop`.
 
 **1. Read the table in the job summary or the PR comment.** Regressed benchmarks are marked
@@ -148,7 +149,8 @@ regression.**
 
 | Check | How to tell | What to do |
 |---|---|---|
-| **Is the baseline from the same class of machine?** | Look at `runtime` in `benchmarks/baseline.json`. A local capture compared against `ubuntu-latest` is measuring hardware. | Refresh it: run the **Capture perf baseline** workflow from `main`, download the artifact, commit it through a `chore/` branch into `develop`. |
+| **Is it a different machine?** | The gate says so itself, at the top of the table, naming both. Note that `ubuntu-latest` mixes CPU models: Intel Xeon 8370C and AMD EPYC 7763 differ by up to 33% on the same commit. | If only *time* tripped and allocation is flat, it is the hardware. Refresh the baseline: run **Capture perf baseline** from `main`, download the artifact, commit it through a `chore/` branch into `develop`. |
+| **Did memory move at all?** | Compare the two `vs baseline` columns. | Allocation is deterministic. Flat memory with worse time is hardware; moved memory is the code. |
 | **Did everything regress by a similar amount?** | All benchmarks up together, including ones the change does not touch. | Almost certainly the machine or a noisy runner, not the change. Re-run once; if it persists, refresh the baseline. |
 | **Is it only one or two benchmarks, and plausibly related to the diff?** | A parser change moving the parser benchmarks and nothing else. | A real regression. Go to step 3. |
 

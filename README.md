@@ -123,7 +123,7 @@ wrong report or a crash if taken on trust. The full list is
 
 Gitflow. `main` is production and only ever receives a release PR from `develop`; `develop`
 only receives `feature/*` and `fix/*`. Both are protected, force pushes blocked, `build-test`
-required on both and `perf-gate` required on `main`. Every merge to `main` is tagged and gets a
+required on both and `perf-gate` required on `main` (15% on allocated memory, 50% on mean time — see D20). Every merge to `main` is tagged and gets a
 GitHub Release. Conventional Commits throughout; every PR body states **What**, **Why**, **How
 tested** and **Output**.
 

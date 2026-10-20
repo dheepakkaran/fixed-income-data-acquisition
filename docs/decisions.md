@@ -357,3 +357,43 @@ comment for reasons that have nothing to do with performance — a fork's token,
 feature, an API outage — and the verdict is already carried by the step's exit code and the
 job summary. A gate that goes red for reasons unrelated to performance is a gate that gets
 ignored, which is the same failure mode D17 is written to avoid.
+
+---
+
+## D20 — Time and memory get different thresholds, because they are different measurements
+
+**Decision.** `perf-gate` enforces **15% on allocated memory** and **50% on mean time**.
+
+**Why.** The `v1.0.0` release pull request failed the gate, and the gate's own host check said
+why:
+
+```
+baseline: Linux Ubuntu 24.04.5 LTS | Intel Xeon Platinum 8370C CPU 2.80GHz | X64
+this run: Linux Ubuntu 24.04.5 LTS | AMD EPYC 7763                        | X64
+```
+
+GitHub's `ubuntu-latest` pool mixes CPU models. The same commit, measured on the two,
+differed by **+18.8% to +33.1%** across the parser benchmarks — while **allocation was
+identical to within 0.0%**. That last part is the proof: the work done did not change, only
+the silicon it ran on. D18 fixed comparing a laptop with a runner; this is the same problem
+one level down, and "same runner class" turns out not to be a narrow enough guarantee.
+
+So the two measures are treated as what they are:
+
+- **Allocated bytes are deterministic.** The same code allocates the same bytes on any
+  machine, so 15% there is a real signal about the code.
+- **Mean time is not.** On a shared runner of unknown CPU it carries at least 33% of
+  hardware variance before the change under test contributes anything.
+
+A 50% time threshold is still a working control, not a formality. The deliberate regression in
+RESULTS.md measured **+203%** in time and **+206%** in memory: either threshold alone catches
+it. `The_deliberate_regression_trips_both_measures` pins that, so the wider time tolerance
+cannot quietly become a tolerance for everything.
+
+**Rejected.** Raising both thresholds to 50%. Allocation does not need the slack, and giving
+it up would lose the one measure that is actually comparable across machines — exactly the
+measure that caught the regex regression's extra 2 MB per parse.
+
+**Rejected.** Pinning the runner to a fixed CPU with a larger instance type. It would work and
+it costs money; a public repository gets the shared pool. Treating the measurement honestly is
+free.

@@ -30,8 +30,23 @@ public sealed record BenchmarkComparison(
     /// <summary>True when this benchmark has no baseline to compare against.</summary>
     public bool IsNew => BaselineMeanNs is null;
 
-    public bool RegressedOn(double threshold) =>
-        TimeChangePercent > threshold || MemoryChangePercent > threshold;
+    /// <summary>
+    /// Whether this benchmark regressed. Time and memory are judged against different
+    /// thresholds because they are different kinds of measurement: allocated bytes are
+    /// deterministic and hardware-independent, mean time is neither.
+    /// </summary>
+    public bool RegressedOn(double timeThreshold, double memoryThreshold) =>
+        TimeChangePercent > timeThreshold || MemoryChangePercent > memoryThreshold;
+
+    /// <summary>Which measure tripped, for the report.</summary>
+    public string RegressionKind(double timeThreshold, double memoryThreshold) =>
+        (TimeChangePercent > timeThreshold, MemoryChangePercent > memoryThreshold) switch
+        {
+            (true, true) => "time and memory",
+            (true, false) => "time",
+            (false, true) => "memory",
+            _ => string.Empty,
+        };
 }
 
 /// <summary>The gate's verdict over every benchmark.</summary>
@@ -43,6 +58,16 @@ public sealed record GateResult(
     IReadOnlyList<BenchmarkComparison> Comparisons,
     IReadOnlyList<string> MissingFromResults)
 {
+    /// <summary>
+    /// Tolerance on mean time. Wider than the memory threshold on purpose: GitHub's
+    /// ubuntu-latest pool mixes CPU models, and the same code measured 19% to 33% slower on an
+    /// AMD EPYC 7763 than on an Intel Xeon Platinum 8370C with allocation identical to within
+    /// 0.0%. See docs/decisions.md D20.
+    /// </summary>
+    public double TimeThreshold { get; init; } = 50;
+
+    /// <summary>Tolerance on allocated bytes, which is deterministic and does not vary by machine.</summary>
+    public double MemoryThreshold => Threshold;
     /// <summary>Machine the baseline was measured on, when it recorded one.</summary>
     public string? BaselineHost { get; init; }
 
@@ -57,7 +82,7 @@ public sealed record GateResult(
         BaselineHost is { Length: > 0 } a && CurrentHost is { Length: > 0 } b
         && !string.Equals(a, b, StringComparison.Ordinal);
     public IReadOnlyList<BenchmarkComparison> Regressions =>
-        [.. Comparisons.Where(c => c.RegressedOn(Threshold))];
+        [.. Comparisons.Where(c => c.RegressedOn(TimeThreshold, MemoryThreshold))];
 
     public bool Passed => Regressions.Count == 0;
 
@@ -102,7 +127,7 @@ public sealed record GateResult(
         var verdict = Passed ? "passed" : "found a regression";
         var mode = enforcing ? "enforcing" : "report-only";
         md.Append(CultureInfo.InvariantCulture,
-            $"## Performance gate {verdict} ({mode}, threshold {Threshold:N0}%)\n\n");
+            $"## Performance gate {verdict} ({mode}, memory {MemoryThreshold:N0}%, time {TimeThreshold:N0}%)\n\n");
 
         if (HostMismatch)
         {
@@ -125,7 +150,7 @@ public sealed record GateResult(
 
         foreach (var c in Comparisons)
         {
-            var flag = c.RegressedOn(Threshold) ? " ⚠️" : string.Empty;
+            var flag = c.RegressedOn(TimeThreshold, MemoryThreshold) ? " ⚠️" : string.Empty;
             md.Append(CultureInfo.InvariantCulture,
                 $"| `{c.Name}`{flag} | {FormatTime(c.CurrentMeanNs)} | {FormatChange(c.TimeChangePercent, c.IsNew)} "
                 + $"| {FormatBytes(c.CurrentBytes)} | {FormatChange(c.MemoryChangePercent, c.IsNew)} |\n");
@@ -143,7 +168,8 @@ public sealed record GateResult(
             foreach (var c in Regressions)
             {
                 md.Append(CultureInfo.InvariantCulture,
-                    $"- `{c.Name}`: {FormatTime(c.BaselineMeanNs ?? 0)} to {FormatTime(c.CurrentMeanNs)}"
+                    $"- `{c.Name}` ({c.RegressionKind(TimeThreshold, MemoryThreshold)}): "
+                    + $"{FormatTime(c.BaselineMeanNs ?? 0)} to {FormatTime(c.CurrentMeanNs)}"
                     + $" ({FormatChange(c.TimeChangePercent, false)} time, {FormatChange(c.MemoryChangePercent, false)} memory)\n");
             }
         }

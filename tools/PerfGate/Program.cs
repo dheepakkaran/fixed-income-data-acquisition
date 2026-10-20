@@ -30,6 +30,11 @@ static int Compare(Dictionary<string, string> options)
         ? t
         : 15.0;
 
+    var timeThreshold = double.TryParse(
+        options.GetValueOrDefault("time-threshold"), NumberStyles.Float, CultureInfo.InvariantCulture, out var tt)
+        ? tt
+        : 50.0;
+
     var reportOnly = options.ContainsKey("report-only");
 
     BenchmarkRun run;
@@ -62,6 +67,7 @@ static int Compare(Dictionary<string, string> options)
 
     var result = GateResult.Compare(current, baseline, threshold) with
     {
+        TimeThreshold = timeThreshold,
         BaselineHost = baseline.Runtime,
         CurrentHost = run.Host,
     };
@@ -83,14 +89,16 @@ static int Compare(Dictionary<string, string> options)
 
     if (result.Passed)
     {
-        Console.WriteLine($"Performance gate passed: no benchmark regressed by more than {threshold:N0}%.");
+        Console.WriteLine(
+            $"Performance gate passed: no benchmark regressed by more than {threshold:N0}% in memory "
+            + $"or {timeThreshold:N0}% in time.");
         return 0;
     }
 
     foreach (var regression in result.Regressions)
     {
         Console.Error.WriteLine(
-            $"::warning::{regression.Name} regressed "
+            $"::warning::{regression.Name} regressed on {regression.RegressionKind(timeThreshold, threshold)}: "
             + $"{regression.TimeChangePercent:N1}% in time, {regression.MemoryChangePercent:N1}% in memory");
     }
 
@@ -102,7 +110,8 @@ static int Compare(Dictionary<string, string> options)
     }
 
     Console.Error.WriteLine(
-        $"::error::Performance gate failed: {result.Regressions.Count} benchmark(s) regressed by more than {threshold:N0}%.");
+        $"::error::Performance gate failed: {result.Regressions.Count} benchmark(s) regressed beyond the "
+        + $"thresholds ({threshold:N0}% memory, {timeThreshold:N0}% time).");
     return 1;
 }
 
@@ -179,10 +188,12 @@ static int Usage()
         """
         PerfGate - compares a BenchmarkDotNet run against a recorded baseline.
 
-          compare --results <dir> --baseline <file> [--threshold 15] [--report-only]
-                  [--summary <file>] [--comment <file>]
-              Exit 1 when a benchmark regressed by more than the threshold in either mean
-              time or allocated memory. With --report-only it reports and exits 0.
+          compare --results <dir> --baseline <file> [--threshold 15] [--time-threshold 50]
+                  [--report-only] [--summary <file>] [--comment <file>]
+              Exit 1 when a benchmark regressed beyond either threshold. --threshold applies
+              to allocated memory, which is deterministic; --time-threshold applies to mean
+              time, which is not, because GitHub's runner pool mixes CPU models. With
+              --report-only it reports and exits 0.
 
           capture --results <dir> --out <file> [--commit <sha>]
               Record a run as the new baseline.
