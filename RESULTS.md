@@ -4,7 +4,13 @@ Every number here came from a run actually performed. Nothing is estimated or ca
 from documentation.
 
 **Measured on:** Apple M5, 10 cores, 16 GB RAM, macOS 27.0 (arm64), .NET SDK 10.0.402,
-PostgreSQL 16.15 in Docker (8 GB allocated to the VM). Release builds throughout.
+PostgreSQL 16.15 in Docker (8 GB allocated to the VM). Release builds throughout. CI figures,
+where given, are from `ubuntu-latest` and are labelled as such — the two are not comparable,
+for reasons section 6 goes into.
+
+**Live report:** <https://dheepakkaran.github.io/fixed-income-data-acquisition/>, published by
+the `v1.0.0` production run
+([39391623691](https://github.com/dheepakkaran/fixed-income-data-acquisition/actions/runs/39391623691)).
 
 ---
 
@@ -27,6 +33,15 @@ periods each. One `ingest --periods 3` run, cache warm, from the CLI.
 
 **Total: 316,091 loan-level records, 9 sources, 0 failed, 0 skipped.** Wall clock for the
 whole run including discovery requests: **9.63 s**.
+
+Plus **6,255 Treasury par yield points** over two calendar years (2026: 200 business days x 14
+tenors = 2,800, exactly matching an independent count of the feed; 2025: 249 days, 3,455
+points, the 31 short of 3,486 being tenors Treasury left blank on particular days and stored
+as absent rather than as a yield of zero).
+
+**322,346 records in total.** The production run reproduced every figure above on
+`ubuntu-latest` runners with the SEC download cache restored from the previous month's key, so
+nothing was re-downloaded.
 
 The "still open" column is why pool metrics filter on a positive ending balance. Closed
 loans stay in the file long after they pay off, and in Exeter's seasoned deep-subprime pool
@@ -167,6 +182,44 @@ stream, so the 1 MiB buffer was simply half of the parser's 2 MB allocation per 
 for about 3% of throughput. It is now 64 KiB, which is the real change kept out of that
 attempt.
 
+### Two machines, and then two CPUs
+
+The gate failed twice for reasons that had nothing to do with the code, and each failure
+narrowed what "comparable measurement" means.
+
+**First: a laptop against a runner.** The baseline was captured on an Apple M5 and compared
+against `ubuntu-latest`. The runner is 2.2x to 2.8x slower:
+
+| Benchmark | Apple M5 | ubuntu-latest (Xeon 8370C) |
+|---|---:|---:|
+| `ParsePrettyPrinted` | 1.360 ms | 3.013 ms |
+| `CopyLoad[Records=10000]` | 84.786 ms | 199.826 ms |
+| `PoolPeriodQuery[Records=10000]` | 7.225 ms | 20.300 ms |
+
+**Second: two CPUs inside the same runner pool.** With a CI-captured baseline, the `v1.0.0`
+release pull request still failed — and the gate's own host check, added after the first
+failure, named the cause:
+
+```
+baseline: Linux Ubuntu 24.04.5 LTS | Intel Xeon Platinum 8370C CPU 2.80GHz | X64
+this run: Linux Ubuntu 24.04.5 LTS | AMD EPYC 7763                        | X64
+```
+
+Same commit, different silicon:
+
+| Benchmark | Time | Allocated |
+|---|---:|---:|
+| `ParseTreasuryCurve` | **+33.1%** | −0.0% |
+| `ParsePrettyPrinted` | **+31.5%** | −0.0% |
+| `ParseAndAggregate` | **+29.7%** | +0.0% |
+| `ParseSingleLine` | **+18.8%** | +0.0% |
+
+**Allocation identical to within 0.0% is the proof.** The work done did not change; only the
+machine did. So the gate now judges the two measures separately (D20): **15% on allocated
+memory**, which is deterministic and comparable across machines, and **50% on mean time**,
+which is not. The deliberate regression measured +203% time and +206% memory, so either
+threshold alone still catches it.
+
 ### What the CI numbers also showed
 
 In CI the regression read **+499%**, and *every* benchmark tripped — including
@@ -177,7 +230,26 @@ meaningful. Hence `capture-baseline.yml`, which captures the baseline on a CI ru
 `main` (decision D18), and why the local pair above is reported alongside the CI result: both
 show the gate working, only the local pair measures the regression's actual size.
 
-## 7. Rate limiting
+## 7. Production run
+
+`v1.0.0`, dispatched from `main`
+([39391623691](https://github.com/dheepakkaran/fixed-income-data-acquisition/actions/runs/39391623691)).
+
+| | |
+|---|---|
+| Sources | 11 (9 ABS-EE exhibits, 2 Treasury years) |
+| Records loaded | **322,346** |
+| Failed | 0 |
+| SEC downloads | **0** — cache hit on key `sec-abs-ee-2026-10` |
+| Jobs | `ingest: success`, `deploy: success` |
+| Published | <https://dheepakkaran.github.io/fixed-income-data-acquisition/> (HTTP 200, 33,756 bytes) |
+
+`deploy` is a separate job with `needs: ingest`, so a run with a failed source publishes
+nothing. That property was not free: the first production run reported
+`=> 8 succeeded, 0 skipped, 1 failed` and **the workflow went green**, because the ingest step
+piped the CLI through `tee` and a bash pipeline's exit status is its last command's.
+
+## 8. Rate limiting
 
 SEC fair access permits at most 10 requests per second.
 
