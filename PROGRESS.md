@@ -27,7 +27,7 @@
 | **`v1.0.0`** | #12 | Tagged, released, production run published to Pages. |
 | `chore/final-results` | #14 | Final measured numbers. |
 
-**170 tests** (127 unit, 43 integration), 61.1% line coverage, `dotnet build -warnaserror`
+**175 tests** (127 unit, 48 integration), 61.1% line coverage, `dotnet build -warnaserror`
 clean, 20 decisions recorded.
 
 ## Open issues
