@@ -138,3 +138,58 @@ load committed nothing, validation had nothing to object to, and the run went gr
 ABS-EE exhibit with no assets in it means the file, the format or the parser is wrong, and
 reporting that behind a green tick is worse than failing, because the production run would
 have published an empty report without complaint.
+
+---
+
+## D10 — Large downloads are retried in the provider, not by the resilience handler
+
+**Decision.** `EdgarClient.FetchExhibitAsync` retries a failed transfer itself, three
+attempts with exponential backoff, and verifies the delivered length against
+`Content-Length`.
+
+**Why.** `AddStandardResilienceHandler` cannot help here, which the first production run
+demonstrated: one of nine sources died with
+`HttpIOException: The response ended prematurely` partway through a 120 MB body and the
+handler passed it straight through as a failed source. Exhibits are fetched with
+`HttpCompletionOption.ResponseHeadersRead` and streamed to disk, so by the time a transfer
+dies its headers have been accepted and part of its stream consumed. Polly cannot replay
+that. A fresh GET is the only recovery, so the whole download has to be the unit of retry.
+
+The length check is there because a transfer can end cleanly and still be short. Without it
+a silent truncation would be cached, hashed and treated as the real exhibit, surfacing much
+later as a half-parsed file.
+
+**Rejected.** Raising the resilience handler's retry count. It would retry the request, not
+the transfer, and the failure mode it needs to cover happens after the retry decision has
+already been made.
+
+---
+
+## D11 — The production run's ingest step sets `pipefail`
+
+**Decision.** The ingest step is an explicit `bash` block beginning `set -o pipefail`.
+
+**Why.** The step pipes the CLI through `tee` to capture a log, and a bash pipeline's exit
+status is its last command's. Without `pipefail` the step's status was `tee`'s, which is
+always zero. The first production run reported "8 succeeded, 0 skipped, 1 failed" and the
+workflow went green. "Fail loudly on a validation failure" is a requirement, and a green
+tick over a failed source is the precise opposite.
+
+---
+
+## D12 — The rate limiter's wall-clock test asserts average rate, not arrival distribution
+
+**Decision.** `The_average_request_rate_never_exceeds_the_ceiling` divides requests by
+elapsed time. The earlier version slid a one-second window across recorded arrival
+timestamps.
+
+**Why.** The stricter-looking assertion was the flakier one. Arrival timestamps are taken in
+a continuation, so when a shared runner deschedules the thread pool the arrivals bunch
+together even though the limiter paced the permits correctly: it observed 11 on a macOS
+runner in the release workflow while passing locally and on every Linux run. It was
+measuring the thread pool.
+
+Average rate can only be pushed down by scheduler noise, never up, so it fails only when the
+limiter is genuinely wrong. The no-burst guarantee it used to imply is now asserted
+directly and deterministically by `The_bucket_holds_a_single_token_so_there_is_no_burst_allowance`,
+with no clock involved at all.

@@ -87,12 +87,17 @@ jobs:
 
       - name: Ingest
         id: ingest
-        run: >
-          dotnet run --project src/DataAcquisition.Cli -c Release --no-build --
-          ingest
-          --periods ${{ github.event.inputs.periods || '3' }}
-          ${{ github.event.inputs.force == 'true' && '--force' || '' }}
-          2>&1 | tee ingestion.log
+        # pipefail matters: without it the exit status of this step is tee's, not the
+        # CLI's, and a run with a failed source reports success. The first production run
+        # did exactly that - one source failed, 8 of 9 loaded, and the workflow went green.
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet run --project src/DataAcquisition.Cli -c Release --no-build -- \
+            ingest \
+            --periods ${{ github.event.inputs.periods || '3' }} \
+            ${{ github.event.inputs.force == 'true' && '--force' || '' }} \
+            2>&1 | tee ingestion.log
         env:
           SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
 
