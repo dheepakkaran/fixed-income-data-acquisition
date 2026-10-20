@@ -149,6 +149,7 @@ jobs:
           --results BenchmarkDotNet.Artifacts/results
           --baseline benchmarks/baseline.json
           --threshold 15
+          --time-threshold 50
           --comment perf-gate-comment.md
           ${{ steps.mode.outputs.flag }}
 
