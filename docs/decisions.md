@@ -84,3 +84,57 @@ kept.
 **Why.** It is the SDK default, `dotnet build`/`restore`/`test` consume it directly, and
 hand-editing it is far easier than the legacy `.sln` format. No tooling in this repo reads
 the solution file other than the .NET CLI.
+
+---
+
+## D7 — The SEC rate limiter paces requests instead of windowing them
+
+**Decision.** `SecRateLimitingHandler` uses a `TokenBucketRateLimiter` holding a single
+token, replenished every `1000 / rate x 1.05` ms, rather than a sliding or fixed window.
+
+**Why.** A window-based limiter does not hold the fair-access ceiling. Both fixed and
+sliding windows grant the entire permit limit the moment a window opens, so ten requests at
+the end of one window and ten at the start of the next satisfy the limiter while an observer
+sliding a one-second window across the arrivals counts nineteen. That is not theoretical:
+`Never_exceeds_ten_requests_in_any_one_second_window` measured 19 against a
+`SlidingWindowRateLimiter` configured with a permit limit of 10. Segmenting a sliding window
+smooths when permits come back, not how many may be spent at once.
+
+A single-token bucket spaces requests at least one replenishment period apart, which bounds
+every one-second span rather than just each window. The 5% margin exists because the
+replenishment timer fires on a best-effort cadence: pacing at exactly 10/s let scheduler
+slack put two requests 98 ms apart, which the same test saw as 11 in a second. The ceiling
+is a limit to stay under, not a target to hit, and 5% of a few dozen requests costs nothing.
+
+**Rejected.** Raising the measurement tolerance to make the window limiter's test pass. The
+test is asserting the thing SEC actually cares about.
+
+---
+
+## D8 — A credit score of zero is read as "no score", not as a score
+
+**Decision.** The parser maps `obligorCreditScore` of `0` to null.
+
+**Why.** Exeter reports `0` for 937 of 38,648 loans, every one typed
+`Consumer Credit Bureau`. That is what a thin-file or no-hit borrower looks like in a
+deep-subprime pool, not a borrower who scored zero; no bureau scale reaches zero. Kept as a
+score it drags the pool's weighted-average credit score down (589.6 against 592.4 on the
+active pool) and raises 937 spurious validation warnings per period.
+
+The schema cannot settle this, because it types the element as `STRING_20_TYPE` precisely so
+filers can put non-numeric placeholders in it — GM Financial writes the literal text `None`
+182 times in one exhibit. Both are the same statement in different spellings.
+
+---
+
+## D9 — A source that parses to zero records fails the run
+
+**Decision.** `DataProviderBase` marks a run `Failed` when a source yields no records,
+unless the provider overrides `AllowEmptySources`.
+
+**Why.** Found by running the thing. A stale assembly left the parser returning nothing, and
+all nine sources were reported `Succeeded` with "0 parsed, 0 loaded, no rule breaches": the
+load committed nothing, validation had nothing to object to, and the run went green. An
+ABS-EE exhibit with no assets in it means the file, the format or the parser is wrong, and
+reporting that behind a green tick is worse than failing, because the production run would
+have published an empty report without complaint.
